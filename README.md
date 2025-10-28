@@ -1,1 +1,1 @@
-# thesis
+# StudyHub - Student Productivity Application
