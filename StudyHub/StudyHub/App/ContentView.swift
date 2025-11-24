@@ -1,21 +1,22 @@
-//
-//  ContentView.swift
-//  StudyHub
-//
-//  Created by Salah Ben Sarar on 2025. 10. 01..
-//
-
 import SwiftUI
 
-
 struct ContentView: View {
+    @StateObject private var authViewModel = AuthViewModel()
+    
     var body: some View {
-        Text("Hello World!!")
+        Group {
+            if authViewModel.isAuthenticated {
+                MainAppView()
+                    .environmentObject(authViewModel)
+            } else {
+                AuthenticationView()
+                    .environmentObject(authViewModel)
+            }
+        }
+        .animation(.easeInOut(duration: 0.5), value: authViewModel.isAuthenticated)
     }
 }
 
-struct ContentView_Previews: PreviewProvider {
-    static var previews: some View {
-        ContentView()
-    }
+#Preview {
+    ContentView()
 }
