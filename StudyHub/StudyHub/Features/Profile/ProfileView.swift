@@ -1,7 +1,8 @@
 import SwiftUI
+import Firebase
 
 struct ProfileView: View {
-    @StateObject private var authViewModel = AuthViewModel()
+    @EnvironmentObject var authViewModel: AuthViewModel  // ← FIXED: Use environment object
     @State private var showingEditProfile = false
     @State private var showingLogoutAlert = false
     
@@ -46,6 +47,7 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $showingEditProfile) {
             EditProfileView()
+                .environmentObject(authViewModel)  // ← Pass environment object to EditProfileView
         }
         .alert("Sign Out", isPresented: $showingLogoutAlert) {
             Button("Cancel", role: .cancel) { }
@@ -93,7 +95,8 @@ private extension ProfileView {
             }
             
             VStack(spacing: 12) {
-                Text("Salah Ben Sarar")
+                // ← FIXED: Use real user data
+                Text(authViewModel.userProfile?.fullName ?? "User")
                     .font(.title2)
                     .fontWeight(.bold)
                     .foregroundColor(.white)
@@ -102,7 +105,8 @@ private extension ProfileView {
                     Image(systemName: "graduationcap.fill")
                         .foregroundColor(.cyan)
                         .font(.caption)
-                    Text("Computer Science Student")
+                    // ← FIXED: Use real major field
+                    Text("\(authViewModel.userProfile?.majorFieldOfStudy ?? "Student") Student")
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundColor(.white)
@@ -122,19 +126,31 @@ private extension ProfileView {
             SectionHeader(title: "Personal Information", icon: "person.text.rectangle")
             
             VStack(spacing: 16) {
-                InfoRow(icon: "envelope.fill", title: "Email", value: "leemoney6@gmail.com")
+                // ← FIXED: Use real user data
+                InfoRow(icon: "envelope.fill", title: "Email", value: authViewModel.userProfile?.email ?? "No email")
                 Divider().background(.white.opacity(0.2))
-                InfoRow(icon: "building.2.fill", title: "University", value: "John von Neumann University")
+                InfoRow(icon: "building.2.fill", title: "University", value: authViewModel.userProfile?.universityName ?? "Not specified")
                 Divider().background(.white.opacity(0.2))
-                InfoRow(icon: "book.fill", title: "Major", value: "Computer Science")
+                InfoRow(icon: "book.fill", title: "Major", value: authViewModel.userProfile?.majorFieldOfStudy ?? "Not specified")
                 Divider().background(.white.opacity(0.2))
-                InfoRow(icon: "graduationcap.fill", title: "Year", value: "Final Year")
+                InfoRow(icon: "graduationcap.fill", title: "Year", value: authViewModel.userProfile?.yearOfStudy ?? "Not specified")
                 Divider().background(.white.opacity(0.2))
-                InfoRow(icon: "calendar", title: "Member Since", value: "November 2025")
+                InfoRow(icon: "calendar", title: "Member Since", value: memberSinceText)
             }
         }
         .padding(24)
         .background(premiumCardBackground)
+    }
+    
+    // ← FIXED: Calculate member since from real creation date
+    private var memberSinceText: String {
+        guard let createdDate = authViewModel.userProfile?.createdDate else {
+            return "Recently"
+        }
+        
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+        return formatter.string(from: createdDate)
     }
     
     var studyPreferencesSection: some View {
@@ -142,11 +158,27 @@ private extension ProfileView {
             SectionHeader(title: "Study Preferences", icon: "slider.horizontal.3")
             
             VStack(spacing: 16) {
-                PreferenceRow(icon: "timer", title: "Default Session", value: "25 minutes", color: .orange)
+                // ← FIXED: Use real user preferences
+                PreferenceRow(
+                    icon: "timer",
+                    title: "Default Session",
+                    value: "\(authViewModel.userProfile?.preferredStudyDuration ?? 25) minutes",
+                    color: .orange
+                )
                 Divider().background(.white.opacity(0.2))
-                PreferenceRow(icon: "pause.circle.fill", title: "Break Duration", value: "5 minutes", color: .green)
+                PreferenceRow(
+                    icon: "pause.circle.fill",
+                    title: "Break Duration",
+                    value: "\(authViewModel.userProfile?.preferredBreakDuration ?? 5) minutes",
+                    color: .green
+                )
                 Divider().background(.white.opacity(0.2))
-                PreferenceRow(icon: "bell.fill", title: "Notifications", value: "Enabled", color: .blue)
+                PreferenceRow(
+                    icon: "bell.fill",
+                    title: "Notifications",
+                    value: (authViewModel.userProfile?.notificationsEnabled ?? false) ? "Enabled" : "Disabled",
+                    color: .blue
+                )
                 Divider().background(.white.opacity(0.2))
                 PreferenceRow(icon: "target", title: "Daily Goal", value: "6 sessions", color: .purple)
             }
@@ -160,10 +192,10 @@ private extension ProfileView {
             SectionHeader(title: "Statistics", icon: "chart.bar.fill")
             
             LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 16) {
-                StatCard(title: "Tasks Completed", value: "47", icon: "checkmark.circle.fill", color: .green)
-                StatCard(title: "Study Sessions", value: "23", icon: "clock.fill", color: .cyan)
-                StatCard(title: "Total Hours", value: "12.5", icon: "hourglass", color: .orange)
-                StatCard(title: "Streak", value: "7 days", icon: "flame.fill", color: .red)
+                StatCard(title: "Tasks Completed", value: "0", icon: "checkmark.circle.fill", color: .green)
+                StatCard(title: "Study Sessions", value: "0", icon: "clock.fill", color: .cyan)
+                StatCard(title: "Total Hours", value: "0", icon: "hourglass", color: .orange)
+                StatCard(title: "Streak", value: "0 days", icon: "flame.fill", color: .red)
             }
         }
         .padding(24)
@@ -244,7 +276,7 @@ private extension ProfileView {
     }
 }
 
-// MARK: - Enhanced Components
+// MARK: - Enhanced Components (Same as before)
 struct SectionHeader: View {
     let title: String
     let icon: String
@@ -426,18 +458,28 @@ struct ActionButton: View {
     }
 }
 
-// MARK: - Edit Profile View
+// MARK: - Edit Profile View (FIXED WITH REAL DATA)
 struct EditProfileView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var fullName = "Salah Ben Sarar"
-    @State private var email = "leemoney6@gmail.com"
-    @State private var university = "John von Neumann University"
-    @State private var major = "Computer Science"
-    @State private var year = "Final Year"
-    @State private var sessionDuration = 25
-    @State private var breakDuration = 5
-    @State private var dailyGoal = 6
+    @EnvironmentObject var authViewModel: AuthViewModel  // ← FIXED: Use environment object
+    
+    // Form fields - loaded from real user data
+    @State private var fullName = ""
+    @State private var email = ""
+    @State private var universityName = ""
+    @State private var majorFieldOfStudy = ""
+    @State private var yearOfStudy = ""
+    @State private var preferredStudyDuration = 25
+    @State private var preferredBreakDuration = 5
     @State private var notificationsEnabled = true
+    @State private var reminderNotifications = true
+    @State private var achievementNotifications = true
+    
+    @State private var isLoading = false
+    @State private var showingError = false
+    @State private var errorMessage = ""
+    
+    let yearOptions = ["1st Year", "2nd Year", "3rd Year", "4th Year", "Graduate", "PhD"]
     
     var body: some View {
         NavigationView {
@@ -464,44 +506,79 @@ struct EditProfileView: View {
                             VStack(spacing: 16) {
                                 CustomTextField(placeholder: "Full Name", text: $fullName)
                                 CustomTextField(placeholder: "Email", text: $email)
-                                CustomTextField(placeholder: "University", text: $university)
-                                CustomTextField(placeholder: "Major", text: $major)
-                                CustomTextField(placeholder: "Year", text: $year)
+                                    .disabled(true) // Email shouldn't be editable
+                                    .opacity(0.7)
+                                CustomTextField(placeholder: "University", text: $universityName)
+                                CustomTextField(placeholder: "Major", text: $majorFieldOfStudy)
+                                
+                                // Year Picker
+                                Menu {
+                                    ForEach(yearOptions, id: \.self) { year in
+                                        Button(year) {
+                                            yearOfStudy = year
+                                        }
+                                    }
+                                } label: {
+                                    HStack {
+                                        Text(yearOfStudy.isEmpty ? "Year of Study" : yearOfStudy)
+                                            .foregroundColor(yearOfStudy.isEmpty ? .white.opacity(0.6) : .white)
+                                        Spacer()
+                                        Image(systemName: "chevron.down")
+                                            .foregroundColor(.white.opacity(0.6))
+                                            .font(.caption)
+                                    }
+                                    .font(.system(size: 15))
+                                    .padding(EdgeInsets(top: 15, leading: 10, bottom: 15, trailing: 10))
+                                    .background {
+                                        RoundedRectangle(cornerRadius: 5)
+                                            .stroke(.white.opacity(0.3), lineWidth: 1)
+                                    }
+                                }
                             }
                         }
                         .padding(24)
-                        .background(
-                            RoundedRectangle(cornerRadius: 20)
-                                .fill(.black.opacity(0.4))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 20)
-                                        .stroke(.white.opacity(0.3), lineWidth: 1)
-                                )
-                        )
+                        .background(cardBackground)
                         
                         // Study Preferences
                         VStack(alignment: .leading, spacing: 20) {
                             SectionHeader(title: "Study Preferences", icon: "slider.horizontal.3")
                             
                             VStack(spacing: 20) {
-                                EditPreferenceRow(
-                                    title: "Session Duration",
-                                    selection: $sessionDuration,
-                                    options: [15: "15 min", 25: "25 min", 30: "30 min", 45: "45 min"]
-                                )
+                                // Study Duration Slider
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Study Session: \(preferredStudyDuration) minutes")
+                                        .foregroundColor(.white)
+                                        .fontWeight(.semibold)
+                                    
+                                    Slider(
+                                        value: Binding(
+                                            get: { Double(preferredStudyDuration) },
+                                            set: { preferredStudyDuration = Int($0) }
+                                        ),
+                                        in: 15...60,
+                                        step: 5
+                                    )
+                                    .accentColor(.orange)
+                                }
                                 
-                                EditPreferenceRow(
-                                    title: "Break Duration",
-                                    selection: $breakDuration,
-                                    options: [5: "5 min", 10: "10 min", 15: "15 min"]
-                                )
+                                // Break Duration Slider
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Break Duration: \(preferredBreakDuration) minutes")
+                                        .foregroundColor(.white)
+                                        .fontWeight(.semibold)
+                                    
+                                    Slider(
+                                        value: Binding(
+                                            get: { Double(preferredBreakDuration) },
+                                            set: { preferredBreakDuration = Int($0) }
+                                        ),
+                                        in: 5...20,
+                                        step: 5
+                                    )
+                                    .accentColor(.green)
+                                }
                                 
-                                EditPreferenceRow(
-                                    title: "Daily Goal",
-                                    selection: $dailyGoal,
-                                    options: Dictionary(uniqueKeysWithValues: (1...10).map { ($0, "\($0) sessions") })
-                                )
-                                
+                                // Notifications Toggle
                                 HStack {
                                     Text("Notifications")
                                         .foregroundColor(.white)
@@ -515,14 +592,7 @@ struct EditProfileView: View {
                             }
                         }
                         .padding(24)
-                        .background(
-                            RoundedRectangle(cornerRadius: 20)
-                                .fill(.black.opacity(0.4))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 20)
-                                        .stroke(.white.opacity(0.3), lineWidth: 1)
-                                )
-                        )
+                        .background(cardBackground)
                         
                         Spacer(minLength: 50)
                     }
@@ -542,40 +612,102 @@ struct EditProfileView: View {
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Save") {
-                        dismiss()
+                        Task {
+                            await saveProfile()
+                        }
                     }
                     .foregroundColor(.cyan)
                     .fontWeight(.semibold)
+                    .disabled(isLoading || !isValidForm)
                 }
+            }
+            .onAppear {
+                loadUserData()
+            }
+            .alert("Error", isPresented: $showingError) {
+                Button("OK") { }
+            } message: {
+                Text(errorMessage)
             }
         }
     }
-}
-
-struct EditPreferenceRow: View {
-    let title: String
-    @Binding var selection: Int
-    let options: [Int: String]
     
-    var body: some View {
-        HStack {
-            Text(title)
-                .foregroundColor(.white)
-                .fontWeight(.semibold)
-            
-            Spacer()
-            
-            Picker(title, selection: $selection) {
-                ForEach(options.keys.sorted(), id: \.self) { key in
-                    Text(options[key] ?? "").tag(key)
-                }
-            }
-            .pickerStyle(MenuPickerStyle())
-            .accentColor(.cyan)
+    // ← FIXED: Load real user data when view appears
+    private func loadUserData() {
+        guard let profile = authViewModel.userProfile else { return }
+        
+        fullName = profile.fullName
+        email = profile.email
+        universityName = profile.universityName
+        majorFieldOfStudy = profile.majorFieldOfStudy
+        yearOfStudy = profile.yearOfStudy
+        preferredStudyDuration = profile.preferredStudyDuration
+        preferredBreakDuration = profile.preferredBreakDuration
+        notificationsEnabled = profile.notificationsEnabled
+        reminderNotifications = profile.reminderNotifications
+        achievementNotifications = profile.achievementNotifications
+    }
+    
+    // ← FIXED: Actually save changes to Firebase
+    private func saveProfile() async {
+        guard var profile = authViewModel.userProfile else {
+            errorMessage = "Unable to load profile data"
+            showingError = true
+            return
         }
+        
+        isLoading = true
+        
+        // Update profile with form data
+        profile.fullName = fullName.trimmingCharacters(in: .whitespaces)
+        profile.universityName = universityName.trimmingCharacters(in: .whitespaces)
+        profile.majorFieldOfStudy = majorFieldOfStudy.trimmingCharacters(in: .whitespaces)
+        profile.yearOfStudy = yearOfStudy
+        profile.preferredStudyDuration = preferredStudyDuration
+        profile.preferredBreakDuration = preferredBreakDuration
+        profile.notificationsEnabled = notificationsEnabled
+        profile.reminderNotifications = reminderNotifications
+        profile.achievementNotifications = achievementNotifications
+        
+        do {
+            // Save to Firestore
+            let firestore = Firestore.firestore()
+            let data = try Firestore.Encoder().encode(profile)
+            try await firestore.collection("users").document(profile.id).setData(data)
+            
+            await MainActor.run {
+                // Update AuthViewModel's profile
+                authViewModel.userProfile = profile
+                isLoading = false
+                dismiss() // Close edit view on success
+            }
+        } catch {
+            await MainActor.run {
+                isLoading = false
+                errorMessage = "Failed to save profile: \(error.localizedDescription)"
+                showingError = true
+            }
+        }
+    }
+    
+    private var isValidForm: Bool {
+        return !fullName.trimmingCharacters(in: .whitespaces).isEmpty &&
+               !universityName.trimmingCharacters(in: .whitespaces).isEmpty &&
+               !majorFieldOfStudy.trimmingCharacters(in: .whitespaces).isEmpty &&
+               !yearOfStudy.isEmpty
+    }
+    
+    private var cardBackground: some View {
+        RoundedRectangle(cornerRadius: 20)
+            .fill(.black.opacity(0.4))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(.white.opacity(0.3), lineWidth: 1)
+            )
     }
 }
 
 #Preview {
     ProfileView()
+        .environmentObject(AuthViewModel())
 }

@@ -38,7 +38,7 @@ struct MainAppView: View {
                 }
                 .tag(AppTab.tasks)
             
-            PomodoroView()  // ← FIXED: Use your beautiful PomodoroView instead of TimerView
+            PomodoroView()
                 .tabItem {
                     Image(systemName: AppTab.timer.icon)
                     Text(AppTab.timer.rawValue)

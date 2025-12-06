@@ -81,7 +81,12 @@ class AuthViewModel: ObservableObject {
         let isProfileIncomplete = profile.universityName.isEmpty ||
                                  profile.majorFieldOfStudy.isEmpty ||
                                  profile.yearOfStudy.isEmpty
-        
+        print("🔍 Debug - Profile check:")
+        print("  - needsProfileCompletion: \(needsProfileCompletion)")
+        print("  - isAuthenticated: \(isAuthenticated)")
+        print("  - University: '\(profile.universityName)'")
+        print("  - Major: '\(profile.majorFieldOfStudy)'")
+        print("  - Year: '\(profile.yearOfStudy)'")
         if isProfileIncomplete {
             needsProfileCompletion = true
             isAuthenticated = false // Don't show main app until profile is complete

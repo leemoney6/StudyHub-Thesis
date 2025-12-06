@@ -1,33 +1,27 @@
 import SwiftUI
-import WebKit
 
 struct TasksView: View {
     @StateObject private var viewModel = TaskViewModel()
+    @EnvironmentObject var authViewModel: AuthViewModel
     @State private var showingFilters = false
+    @State private var showingAddFirstTask = false
     
     var body: some View {
         NavigationView {
             ZStack {
-                // Same background as dashboard
                 enhancedBackground
                 
                 VStack(spacing: 0) {
                     // Statistics header
                     statisticsHeader
                     
-                    // Tasks list
-                    ScrollView {
-                        LazyVStack(spacing: 12) {
-                            if viewModel.filteredTasks.isEmpty {
-                                emptyStateView
-                            } else {
-                                ForEach(viewModel.filteredTasks) { task in
-                                    TaskRowView(task: task, viewModel: viewModel)
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 16)
+                    // Tasks list or loading state
+                    if viewModel.isLoading && viewModel.tasks.isEmpty {
+                        loadingView
+                    } else if viewModel.tasks.isEmpty {
+                        emptyStateView
+                    } else {
+                        tasksListView
                     }
                 }
             }
@@ -59,8 +53,25 @@ struct TasksView: View {
         .sheet(isPresented: $showingFilters) {
             TaskFiltersView(viewModel: viewModel)
         }
+        .sheet(isPresented: $showingAddFirstTask) {
+            FirstTaskView(viewModel: viewModel)
+        }
+        .alert("Error", isPresented: $viewModel.showingError) {
+            Button("OK") {
+                viewModel.showingError = false
+            }
+        } message: {
+            Text(viewModel.errorMessage)
+        }
         .onAppear {
             viewModel.updateFilteredTasks()
+        }
+        .onChange(of: authViewModel.isAuthenticated) { isAuthenticated in
+            if isAuthenticated {
+                viewModel.refreshForNewUser()
+            } else {
+                viewModel.clearTasksForSignOut()
+            }
         }
     }
 }
@@ -98,6 +109,7 @@ private extension TasksView {
                         )
                         .frame(width: 60, height: 60)
                         .rotationEffect(.degrees(-90))
+                        .animation(.easeInOut(duration: 0.5), value: viewModel.completionPercentage)
                     
                     Text("\(Int(viewModel.completionPercentage * 100))%")
                         .font(.caption)
@@ -114,21 +126,112 @@ private extension TasksView {
             }
         }
         .padding(20)
-        .background {
-            RoundedRectangle(cornerRadius: 16)
-                .fill(.white.opacity(0.08))
-                .background {
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(.ultraThinMaterial.opacity(0.8))
-                }
-                .overlay {
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(.white.opacity(0.2), lineWidth: 1)
-                }
-        }
+        .background(cardBackground)
         .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
+    }
+    
+    var tasksListView: some View {
+        ScrollView {
+            LazyVStack(spacing: 12) {
+                if viewModel.filteredTasks.isEmpty && !viewModel.searchText.isEmpty {
+                    noResultsView
+                } else {
+                    ForEach(viewModel.filteredTasks) { task in
+                        TaskRowView(task: task, viewModel: viewModel)
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+        }
+        .refreshable {
+            // Pull to refresh - Firebase listener automatically updates
+            await Task.sleep(nanoseconds: 500_000_000) // Small delay for UX
+        }
+    }
+    
+    var loadingView: some View {
+        VStack(spacing: 20) {
+            ProgressView()
+                .progressViewStyle(CircularProgressViewStyle(tint: .cyan))
+                .scaleEffect(1.2)
+            
+            Text("Loading your tasks...")
+                .font(.subheadline)
+                .foregroundColor(.white.opacity(0.8))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    
+    var emptyStateView: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                Spacer(minLength: 60)
+                
+                // Welcome illustration
+                ZStack {
+                    Circle()
+                        .fill(.blue.opacity(0.2))
+                        .frame(width: 120, height: 120)
+                    
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 60))
+                        .foregroundColor(.cyan)
+                }
+                
+                VStack(spacing: 12) {
+                    Text("Welcome to StudyHub!")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                    
+                    Text("Start organizing your academic life by adding your first task")
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.8))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
+                }
+                
+                VStack(spacing: 16) {
+                    Button("Add Your First Task") {
+                        showingAddFirstTask = true
+                    }
+                    .buttonStyle(PrimaryTaskButtonStyle())
+                    
+                    Button("Add Demo Tasks") {
+                        Task {
+                            await viewModel.addDemoTasks()
+                        }
+                    }
+                    .buttonStyle(SecondaryTaskButtonStyle())
+                }
+                .padding(.horizontal, 40)
+                
+                Spacer()
+            }
+        }
+    }
+    
+    var noResultsView: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 50))
+                .foregroundColor(.gray.opacity(0.6))
+            
+            VStack(spacing: 8) {
+                Text("No tasks found")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+                
+                Text("Try adjusting your search or filters")
+                    .font(.subheadline)
+                    .foregroundColor(.white.opacity(0.7))
+            }
+        }
+        .padding(.top, 60)
     }
     
     func statCard(_ title: String, count: Int, color: Color) -> some View {
@@ -145,23 +248,17 @@ private extension TasksView {
         .frame(maxWidth: .infinity)
     }
     
-    var emptyStateView: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 60))
-                .foregroundColor(.green.opacity(0.7))
-            
-            Text("All caught up!")
-                .font(.title2)
-                .fontWeight(.semibold)
-                .foregroundColor(.white)
-            
-            Text("You have no tasks matching your current filters.")
-                .font(.subheadline)
-                .foregroundColor(.white.opacity(0.7))
-                .multilineTextAlignment(.center)
-        }
-        .padding(.top, 40)
+    var cardBackground: some View {
+        RoundedRectangle(cornerRadius: 16)
+            .fill(.white.opacity(0.08))
+            .background {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(.ultraThinMaterial.opacity(0.8))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(.white.opacity(0.2), lineWidth: 1)
+            }
     }
     
     var enhancedBackground: some View {
@@ -194,6 +291,110 @@ private extension TasksView {
     }
 }
 
+// MARK: - Button Styles
+struct PrimaryTaskButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.subheadline)
+            .fontWeight(.semibold)
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(
+                LinearGradient(
+                    colors: [.cyan, .blue],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .cornerRadius(12)
+            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
+            .opacity(configuration.isPressed ? 0.8 : 1.0)
+            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+struct SecondaryTaskButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.subheadline)
+            .fontWeight(.medium)
+            .foregroundColor(.cyan)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(.cyan.opacity(0.6), lineWidth: 1.5)
+                    .background(.cyan.opacity(0.1))
+            )
+            .cornerRadius(12)
+            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
+            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+// MARK: - First Task View
+struct FirstTaskView: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var viewModel: TaskViewModel
+    
+    var body: some View {
+        NavigationView {
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        Color.blue.opacity(0.4),
+                        Color.black,
+                        Color.purple.opacity(0.3),
+                        Color.black
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+                
+                VStack(spacing: 30) {
+                    VStack(spacing: 16) {
+                        Image(systemName: "star.circle.fill")
+                            .font(.system(size: 60))
+                            .foregroundColor(.yellow)
+                        
+                        VStack(spacing: 8) {
+                            Text("Add Your First Task!")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                            
+                            Text("Let's get you started with your first study task")
+                                .font(.subheadline)
+                                .foregroundColor(.white.opacity(0.8))
+                                .multilineTextAlignment(.center)
+                        }
+                    }
+                    
+                    AddTaskFormView(viewModel: viewModel, isFirstTask: true, onTaskAdded: {
+                        dismiss()
+                    })
+                    
+                    Spacer()
+                }
+                .padding(30)
+            }
+            .navigationTitle("Welcome")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Maybe Later") {
+                        dismiss()
+                    }
+                    .foregroundColor(.white.opacity(0.7))
+                }
+            }
+        }
+    }
+}
+
 #Preview {
     TasksView()
+        .environmentObject(AuthViewModel())
 }

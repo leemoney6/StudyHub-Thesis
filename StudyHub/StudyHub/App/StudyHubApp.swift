@@ -2,11 +2,11 @@ import SwiftUI
 import Firebase
 import GoogleSignIn
 
-@main
-struct StudyHubApp: App {
-    @StateObject private var authViewModel = AuthViewModel()
-    
-    init() {
+// MARK: - App Delegate for proper Firebase setup
+class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+        
         // Configure Firebase
         FirebaseApp.configure()
         
@@ -17,16 +17,35 @@ struct StudyHubApp: App {
             
             let config = GIDConfiguration(clientID: clientId)
             GIDSignIn.sharedInstance.configuration = config
+            print("✅ Google Sign In configured successfully")
         } else {
             print("⚠️ GoogleService-Info.plist not found or CLIENT_ID missing")
         }
+        
+        return true
     }
+    
+    // Handle URL schemes for Google Sign In
+    func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool {
+        return GIDSignIn.sharedInstance.handle(url)
+    }
+}
+
+@main
+struct StudyHubApp: App {
+    // Register app delegate for Firebase
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
+    @StateObject private var authViewModel = AuthViewModel()
     
     var body: some Scene {
         WindowGroup {
             Group {
-                if authViewModel.isAuthenticated {
-                    // Show main app after login
+                if authViewModel.needsProfileCompletion {
+                    // Show profile completion for Google users with incomplete profiles
+                    ProfileCompletionView()
+                        .environmentObject(authViewModel)
+                } else if authViewModel.isAuthenticated {
+                    // Show main app after complete login
                     ContentView()
                         .environmentObject(authViewModel)
                 } else {
@@ -36,7 +55,7 @@ struct StudyHubApp: App {
                 }
             }
             .onOpenURL { url in
-                // Handle Google Sign In URL
+                // Handle Google Sign In URL (backup)
                 GIDSignIn.sharedInstance.handle(url)
             }
         }
