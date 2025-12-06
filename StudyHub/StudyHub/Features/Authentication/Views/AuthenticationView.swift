@@ -365,14 +365,12 @@ private extension AuthenticationView {
             }
             .padding(.vertical, 8)
             
-            HStack(spacing: 12) {
+            HStack() {
                 socialButton("Gmail", icon: "envelope.fill", colors: [.orange.opacity(0.8), .red.opacity(0.6)]) {
                     Task { await viewModel.socialLogin(provider: .google) }
                 }
                 
-                socialButton("Apple", icon: "applelogo", colors: [.gray.opacity(0.6), .black.opacity(0.4)]) {
-                    Task { await viewModel.socialLogin(provider: .apple) }
-                }
+                
             }
         }
     }
