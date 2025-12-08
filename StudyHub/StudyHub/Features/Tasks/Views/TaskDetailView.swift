@@ -5,6 +5,8 @@ struct TaskDetailView: View {
     @State var task: StudyTask
     @ObservedObject var viewModel: TaskViewModel
     @State private var isEditing = false
+    @State private var isLoading = false // Added for Firebase operations
+    @State private var showingDeleteAlert = false // Added delete confirmation
     
     var body: some View {
         NavigationView {
@@ -33,6 +35,7 @@ struct TaskDetailView: View {
                         dismiss()
                     }
                     .foregroundColor(.white)
+                    .disabled(isLoading) // Disable during loading
                 }
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -40,31 +43,76 @@ struct TaskDetailView: View {
                         isEditing = true
                     }
                     .foregroundColor(.blue)
+                    .disabled(isLoading) // Disable during loading
                 }
             }
         }
         .sheet(isPresented: $isEditing) {
             EditTaskView(task: task, viewModel: viewModel)
         }
+        .alert("Delete Task", isPresented: $showingDeleteAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                Task {
+                    await deleteTask()
+                }
+            }
+        } message: {
+            Text("Are you sure you want to delete '\(task.title)'? This action cannot be undone.")
+        }
+        // Show Firebase errors
+        .alert("Error", isPresented: $viewModel.showingError) {
+            Button("OK") { }
+        } message: {
+            Text(viewModel.errorMessage)
+        }
+    }
+    
+    private func toggleCompletion() async {
+        isLoading = true
+        
+        // Update local state immediately for UI feedback
+        withAnimation {
+            task.isCompleted.toggle()
+        }
+        
+        await viewModel.toggleTaskCompletion(task)
+        isLoading = false
+    }
+    
+    private func deleteTask() async {
+        isLoading = true
+        await viewModel.deleteTask(task)
+        isLoading = false
+        dismiss()
     }
 }
 
-// MARK: - Task Detail Sections
+// MARK: - Task Detail Sections (EXACT SAME DESIGN)
 private extension TaskDetailView {
     
     var taskHeaderSection: some View {
         VStack(spacing: 16) {
             HStack {
                 Button {
-                    withAnimation {
-                        task.isCompleted.toggle()
-                        viewModel.updateTask(task)
+                    Task {
+                        await toggleCompletion()
                     }
                 } label: {
-                    Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
-                        .font(.title)
-                        .foregroundColor(task.isCompleted ? .green : .white.opacity(0.6))
+                    ZStack {
+                        if isLoading {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .scaleEffect(0.8)
+                        } else {
+                            Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
+                                .font(.title)
+                                .foregroundColor(task.isCompleted ? .green : .white.opacity(0.6))
+                        }
+                    }
+                    .frame(width: 28, height: 28)
                 }
+                .disabled(isLoading)
                 
                 VStack(alignment: .leading, spacing: 8) {
                     Text(task.title)
@@ -173,14 +221,19 @@ private extension TaskDetailView {
     var taskActionsSection: some View {
         VStack(spacing: 12) {
             Button {
-                withAnimation {
-                    task.isCompleted.toggle()
-                    viewModel.updateTask(task)
+                Task {
+                    await toggleCompletion()
                 }
             } label: {
                 HStack {
-                    Image(systemName: task.isCompleted ? "arrow.clockwise" : "checkmark")
-                        .font(.subheadline)
+                    if isLoading {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .scaleEffect(0.8)
+                    } else {
+                        Image(systemName: task.isCompleted ? "arrow.clockwise" : "checkmark")
+                            .font(.subheadline)
+                    }
                     Text(task.isCompleted ? "Mark as Incomplete" : "Mark as Complete")
                         .font(.subheadline)
                         .fontWeight(.medium)
@@ -191,10 +244,10 @@ private extension TaskDetailView {
                 .background(task.isCompleted ? .orange.opacity(0.6) : .green.opacity(0.6))
                 .cornerRadius(10)
             }
+            .disabled(isLoading)
             
             Button {
-                viewModel.deleteTask(task)
-                dismiss()
+                showingDeleteAlert = true
             } label: {
                 HStack {
                     Image(systemName: "trash")
@@ -209,6 +262,7 @@ private extension TaskDetailView {
                 .background(.red.opacity(0.6))
                 .cornerRadius(10)
             }
+            .disabled(isLoading)
         }
         .padding(20)
         .background {
@@ -240,7 +294,7 @@ private extension TaskDetailView {
     }
 }
 
-// MARK: - Supporting Views
+// MARK: - Supporting Views (EXACT SAME)
 struct DetailRow: View {
     let icon: String
     let title: String
@@ -273,21 +327,50 @@ struct DetailRow: View {
     }
 }
 
-// Placeholder for EditTaskView
+// Placeholder for EditTaskView (EXACT SAME)
 struct EditTaskView: View {
     let task: StudyTask
     let viewModel: TaskViewModel
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
-        Text("Edit Task - Coming Soon")
-            .foregroundColor(.white)
+        NavigationView {
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        Color.blue.opacity(0.4),
+                        Color.black,
+                        Color.purple.opacity(0.3),
+                        Color.black
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+                
+                VStack(spacing: 20) {
+                    Text("Edit Task")
+                        .font(.title2)
+                        .foregroundColor(.white)
+                    
+                    Text("Edit functionality coming soon!")
+                        .foregroundColor(.white.opacity(0.7))
+                    
+                    Spacer()
+                }
+                .padding(40)
+            }
             .navigationTitle("Edit Task")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .foregroundColor(.white)
                 }
             }
+        }
     }
 }
 

@@ -147,8 +147,8 @@ private extension TasksView {
             .padding(.top, 16)
         }
         .refreshable {
-            // Pull to refresh - Firebase listener automatically updates
-            await Task.sleep(nanoseconds: 500_000_000) // Small delay for UX
+            
+            try? await Task.sleep(nanoseconds: 500_000_000)
         }
     }
     
@@ -372,9 +372,7 @@ struct FirstTaskView: View {
                         }
                     }
                     
-                    AddTaskFormView(viewModel: viewModel, isFirstTask: true, onTaskAdded: {
-                        dismiss()
-                    })
+                    AddTaskView(viewModel: viewModel)
                     
                     Spacer()
                 }

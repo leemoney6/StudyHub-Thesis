@@ -1,27 +1,38 @@
 import SwiftUI
 
 struct TaskRowView: View {
-    let task: StudyTask 
+    let task: StudyTask
     let viewModel: TaskViewModel
     @State private var showingTaskDetail = false
+    @State private var isToggling = false // Added for Firebase loading state
     
     var body: some View {
         Button {
             showingTaskDetail = true
         } label: {
             HStack(spacing: 16) {
-                // Completion checkbox
+                // Completion checkbox with loading state
                 Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        viewModel.toggleTaskCompletion(task)
+                    Task {
+                        await toggleCompletion()
                     }
                 } label: {
-                    Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
-                        .font(.title2)
-                        .foregroundColor(task.isCompleted ? .green : .white.opacity(0.6))
+                    ZStack {
+                        if isToggling {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .scaleEffect(0.7)
+                        } else {
+                            Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
+                                .font(.title2)
+                                .foregroundColor(task.isCompleted ? .green : .white.opacity(0.6))
+                        }
+                    }
+                    .frame(width: 28, height: 28) // Consistent frame for loading state
                 }
+                .disabled(isToggling)
                 
-                // Task content
+                // Task content (EXACT SAME DESIGN)
                 VStack(alignment: .leading, spacing: 8) {
                     // Title and priority
                     HStack {
@@ -98,8 +109,50 @@ struct TaskRowView: View {
         .sheet(isPresented: $showingTaskDetail) {
             TaskDetailView(task: task, viewModel: viewModel)
         }
+        .contextMenu {
+            // Context menu for additional actions
+            Button {
+                Task {
+                    await toggleCompletion()
+                }
+            } label: {
+                Label(
+                    task.isCompleted ? "Mark as Incomplete" : "Mark as Complete",
+                    systemImage: task.isCompleted ? "arrow.clockwise" : "checkmark"
+                )
+            }
+            
+            Button {
+                showingTaskDetail = true
+            } label: {
+                Label("View Details", systemImage: "info.circle")
+            }
+            
+            Divider()
+            
+            Button(role: .destructive) {
+                Task {
+                    await viewModel.deleteTask(task)
+                }
+            } label: {
+                Label("Delete Task", systemImage: "trash")
+            }
+        }
     }
     
+    // MARK: - Firebase Actions
+    private func toggleCompletion() async {
+        guard !isToggling else { return }
+        
+        isToggling = true
+        await viewModel.toggleTaskCompletion(task)
+        
+        // Small delay for smooth UX
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        isToggling = false
+    }
+    
+    // MARK: - Computed Properties (EXACT SAME)
     private var formattedDueDate: String {
         let formatter = DateFormatter()
         let calendar = Calendar.current

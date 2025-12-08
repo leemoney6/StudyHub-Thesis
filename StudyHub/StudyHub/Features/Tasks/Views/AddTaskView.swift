@@ -10,6 +10,7 @@ struct AddTaskView: View {
     @State private var selectedPriority: TaskPriority = .medium
     @State private var dueDate = Date()
     @State private var showingDatePicker = false
+    @State private var isLoading = false // Added for Firebase
     
     private var isValidTask: Bool {
         !title.trimmingCharacters(in: .whitespaces).isEmpty
@@ -49,20 +50,33 @@ struct AddTaskView: View {
                         dismiss()
                     }
                     .foregroundColor(.white)
+                    .disabled(isLoading) // Disable during loading
                 }
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Save") {
-                        saveTask()
+                        Task {
+                            await saveTask()
+                        }
                     }
-                    .foregroundColor(isValidTask ? .blue : .gray)
-                    .disabled(!isValidTask)
+                    .foregroundColor(isValidTask && !isLoading ? .blue : .gray)
+                    .disabled(!isValidTask || isLoading)
                 }
             }
         }
+        // Show error alerts from Firebase
+        .alert("Error", isPresented: $viewModel.showingError) {
+            Button("OK") { }
+        } message: {
+            Text(viewModel.errorMessage)
+        }
     }
     
-    private func saveTask() {
+    private func saveTask() async {
+        guard isValidTask else { return }
+        
+        isLoading = true
+        
         let newTask = StudyTask(
             title: title.trimmingCharacters(in: .whitespaces),
             description: description.trimmingCharacters(in: .whitespaces),
@@ -71,12 +85,14 @@ struct AddTaskView: View {
             subject: selectedSubject
         )
         
-        viewModel.addTask(newTask)
+        await viewModel.addTask(newTask)
+        
+        isLoading = false
         dismiss()
     }
 }
 
-// MARK: - Form Sections
+// MARK: - Form Sections (EXACT SAME DESIGN)
 private extension AddTaskView {
     
     var taskTitleSection: some View {
@@ -102,6 +118,7 @@ private extension AddTaskView {
                                 .stroke(.white.opacity(0.2), lineWidth: 1)
                         }
                 }
+                .disabled(isLoading) // Disable during loading
         }
     }
     
@@ -129,6 +146,7 @@ private extension AddTaskView {
                                 .stroke(.white.opacity(0.2), lineWidth: 1)
                         }
                 }
+                .disabled(isLoading) // Disable during loading
         }
     }
     
@@ -153,9 +171,15 @@ private extension AddTaskView {
                     
                     Spacer()
                     
-                    Image(systemName: "chevron.down")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.7))
+                    if isLoading {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .scaleEffect(0.7)
+                    } else {
+                        Image(systemName: "chevron.down")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.7))
+                    }
                 }
                 .padding(16)
                 .background {
@@ -171,6 +195,7 @@ private extension AddTaskView {
                         }
                 }
             }
+            .disabled(isLoading) // Disable during loading
         }
     }
     
@@ -206,6 +231,7 @@ private extension AddTaskView {
                                 .stroke(priority.color.opacity(0.5), lineWidth: 1)
                         }
                     }
+                    .disabled(isLoading) // Disable during loading
                 }
             }
         }
@@ -250,6 +276,7 @@ private extension AddTaskView {
                         }
                 }
             }
+            .disabled(isLoading) // Disable during loading
             .sheet(isPresented: $showingDatePicker) {
                 DatePickerView(selectedDate: $dueDate)
             }
@@ -271,7 +298,7 @@ private extension AddTaskView {
     }
 }
 
-// MARK: - Date Picker Sheet
+// MARK: - Date Picker Sheet (EXACT SAME)
 struct DatePickerView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var selectedDate: Date

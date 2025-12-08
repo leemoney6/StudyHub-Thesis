@@ -1,12 +1,13 @@
 import SwiftUI
 import Combine
 
-// MARK: - Pomodoro Timer View
+// MARK: - Firebase-Enhanced Pomodoro Timer View
 struct PomodoroView: View {
     @StateObject private var timerViewModel = PomodoroTimerViewModel()
     @StateObject private var taskViewModel = TaskViewModel()
+    @EnvironmentObject var authViewModel: AuthViewModel
     @State private var showingTaskSelector = false
-    @State private var selectedTask: StudyTask?
+    @State private var showingSessionHistory = false
     
     var body: some View {
         NavigationView {
@@ -25,14 +26,17 @@ struct PomodoroView: View {
                         timerControlsSection
                         
                         // Current Task Section
-                        if let task = selectedTask {
+                        if let task = timerViewModel.selectedTask {
                             currentTaskSection(task: task)
                         }
                         
-                        // Quick Task Selector
+                        // Quick Task Selector (Real Firebase Tasks)
                         quickTaskSelectorSection
                         
-                        // Session History
+                        // Today's Statistics (Real Firebase Data)
+                        todayStatisticsSection
+                        
+                        // Session History (Real Firebase Data)
                         sessionHistorySection
                         
                         Spacer(minLength: 50)
@@ -44,8 +48,8 @@ struct PomodoroView: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Settings") {
-                        // Timer settings
+                    Button("History") {
+                        showingSessionHistory = true
                     }
                     .foregroundColor(.cyan)
                 }
@@ -53,28 +57,48 @@ struct PomodoroView: View {
         }
         .sheet(isPresented: $showingTaskSelector) {
             TaskSelectorView(
-                tasks: getIncompleteTasks(),  // ← FIXED: Use function instead of property
-                selectedTask: $selectedTask
+                tasks: getIncompleteTasks(),
+                selectedTask: Binding(
+                    get: { timerViewModel.selectedTask },
+                    set: { timerViewModel.setSelectedTask($0) }
+                )
             )
+        }
+        .sheet(isPresented: $showingSessionHistory) {
+            SessionHistoryView(sessions: timerViewModel.recentSessions)
         }
         .onReceive(timerViewModel.$sessionCompleted) { completed in
             if completed {
-                // Handle session completion
-                if let task = selectedTask {
-                    // Add study session to task statistics
-                    recordStudySession(for: task)
+                // Session completed - Firebase automatically saves
+                if let task = timerViewModel.selectedTask {
+                    print("📚 Completed focus session for task: \(task.title)")
                 }
+            }
+        }
+        .onReceive(taskViewModel.$tasks) { tasks in
+            // Update timer with real Firebase tasks
+            timerViewModel.loadAvailableTasks(tasks)
+        }
+        .onAppear {
+            // Connect to real task data
+            timerViewModel.loadAvailableTasks(getIncompleteTasks())
+        }
+        .onChange(of: authViewModel.isAuthenticated) { isAuthenticated in
+            if isAuthenticated {
+                timerViewModel.refreshForNewUser()
+            } else {
+                timerViewModel.clearSessionsForSignOut()
             }
         }
     }
     
     // MARK: - Helper Functions
     private func getIncompleteTasks() -> [StudyTask] {
-        return taskViewModel.tasks.filter { !$0.isCompleted }  // ← FIXED: Get incomplete tasks
+        return taskViewModel.tasks.filter { !$0.isCompleted }
     }
 }
 
-// MARK: - Timer Sections
+// MARK: - Timer Sections (Enhanced with Firebase Data)
 private extension PomodoroView {
     
     var timerHeaderSection: some View {
@@ -87,6 +111,24 @@ private extension PomodoroView {
             Text(timerViewModel.currentPhase.subtitle)
                 .font(.subheadline)
                 .foregroundColor(.white.opacity(0.8))
+                
+            // Show selected task if any
+            if let task = timerViewModel.selectedTask {
+                HStack(spacing: 8) {
+                    Image(systemName: "target")
+                        .foregroundColor(.cyan)
+                        .font(.caption)
+                    
+                    Text("Focusing on: \(task.title)")
+                        .font(.caption)
+                        .foregroundColor(.cyan)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+                .background(.cyan.opacity(0.2))
+                .cornerRadius(12)
+            }
         }
         .padding(.vertical, 20)
     }
@@ -235,7 +277,22 @@ private extension PomodoroView {
     var quickTaskSelectorSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             sectionHeader
-            taskScrollView
+            
+            if timerViewModel.isLoadingSessions {
+                // Loading state
+                HStack {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .cyan))
+                        .scaleEffect(0.8)
+                    Text("Loading tasks...")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.7))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 20)
+            } else {
+                taskScrollView
+            }
         }
         .padding(.vertical, 20)
         .background(cardBackground)
@@ -268,33 +325,114 @@ private extension PomodoroView {
                     subtitle: "No specific task",
                     icon: "brain.head.profile",
                     color: .purple,
-                    isSelected: selectedTask == nil
+                    isSelected: timerViewModel.selectedTask == nil
                 ) {
-                    selectedTask = nil
+                    timerViewModel.setSelectedTask(nil)
                 }
                 
-                // Recent tasks - get first 3 incomplete tasks
+                // Real Firebase tasks (first 3 incomplete)
                 ForEach(Array(getIncompleteTasks().prefix(3)), id: \.id) { task in
                     QuickTaskCard(
                         title: task.title,
                         subtitle: task.subject,
                         icon: "checkmark.circle",
                         color: task.priority.color,
-                        isSelected: selectedTask?.id == task.id
+                        isSelected: timerViewModel.selectedTask?.id == task.id
                     ) {
-                        selectedTask = task
+                        timerViewModel.setSelectedTask(task)
                     }
+                }
+                
+                // Show message if no tasks
+                if getIncompleteTasks().isEmpty {
+                    VStack(spacing: 8) {
+                        Text("No tasks available")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.7))
+                        
+                        Text("Add tasks in the Tasks tab")
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.5))
+                    }
+                    .frame(width: 120)
+                    .padding(.vertical, 16)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.black.opacity(0.3))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(.white.opacity(0.2), lineWidth: 1)
+                            )
+                    )
                 }
             }
             .padding(.horizontal, 20)
         }
     }
     
+    // MARK: - NEW: Today's Statistics Section
+    var todayStatisticsSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("Today's Progress")
+                    .font(.headline)
+                    .fontWeight(.bold)
+                    .foregroundColor(.white)
+                
+                Spacer()
+                
+                if timerViewModel.isLoadingSessions {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .cyan))
+                        .scaleEffect(0.8)
+                } else {
+                    Text("\(Int(timerViewModel.todayFocusTime) / 60)m focused")
+                        .font(.caption)
+                        .foregroundColor(.cyan)
+                        .fontWeight(.semibold)
+                }
+            }
+            
+            HStack(spacing: 20) {
+                StatCard(
+                    title: "Sessions",
+                    value: "\(timerViewModel.todaySessions)",
+                    icon: "timer",
+                    color: .orange
+                )
+                
+                StatCard(
+                    title: "Focus Time",
+                    value: "\(Int(timerViewModel.todayFocusTime) / 60)m",
+                    icon: "clock.fill",
+                    color: .cyan
+                )
+                
+                StatCard(
+                    title: "Completion",
+                    value: String(format: "%.0f%%", timerViewModel.sessionStatistics.completionRate * 100),
+                    icon: "checkmark.circle.fill",
+                    color: .green
+                )
+            }
+        }
+        .padding(20)
+        .background(cardBackground)
+    }
+    
     var sessionHistorySection: some View {
         VStack(alignment: .leading, spacing: 16) {
             sessionHistoryHeader
-            sessionProgressBar
-            sessionsList
+            
+            if timerViewModel.recentSessions.isEmpty {
+                Text("No sessions yet. Start your first focus session!")
+                    .font(.subheadline)
+                    .foregroundColor(.white.opacity(0.7))
+                    .multilineTextAlignment(.center)
+                    .padding(.vertical, 20)
+            } else {
+                sessionsList
+            }
         }
         .padding(20)
         .background(cardBackground)
@@ -302,29 +440,24 @@ private extension PomodoroView {
     
     var sessionHistoryHeader: some View {
         HStack {
-            Text("Today's Sessions")
+            Text("Recent Sessions")
                 .font(.headline)
                 .fontWeight(.bold)
                 .foregroundColor(.white)
             
             Spacer()
             
-            Text("\(timerViewModel.todaySessions)/6")
-                .font(.subheadline)
-                .foregroundColor(.cyan)
-                .fontWeight(.semibold)
+            Button("View All") {
+                showingSessionHistory = true
+            }
+            .foregroundColor(.cyan)
+            .fontWeight(.semibold)
         }
-    }
-    
-    var sessionProgressBar: some View {
-        ProgressView(value: Double(timerViewModel.todaySessions), total: 6.0)
-            .progressViewStyle(LinearProgressViewStyle(tint: .cyan))
-            .scaleEffect(y: 2)
     }
     
     var sessionsList: some View {
         LazyVStack(spacing: 8) {
-            ForEach(Array(timerViewModel.recentSessions.prefix(3)), id: \.id) { session in
+            ForEach(Array(timerViewModel.recentSessions.prefix(5)), id: \.id) { session in
                 SessionHistoryRow(session: session)
             }
         }
@@ -356,15 +489,9 @@ private extension PomodoroView {
         )
         .ignoresSafeArea()
     }
-    
-    func recordStudySession(for task: StudyTask) {
-        // Record study session for the task
-        // This would integrate with your TaskViewModel
-        print("Recording study session for task: \(task.title)")
-    }
 }
 
-// MARK: - Supporting Views
+// MARK: - Supporting Views (Enhanced)
 struct ControlButton: View {
     let icon: String
     let title: String
@@ -406,6 +533,8 @@ struct ControlButton: View {
             .foregroundColor(.white)
     }
 }
+
+
 
 struct TaskRowCompact: View {
     let task: StudyTask
@@ -528,24 +657,169 @@ struct SessionHistoryRow: View {
     let session: StudySession
     
     var body: some View {
-        HStack {
-            Circle()
-                .fill(session.type.color)
-                .frame(width: 8, height: 8)
+        HStack(spacing: 12) {
+            // Session type indicator
+            ZStack {
+                Circle()
+                    .fill(session.type.color.opacity(0.2))
+                    .frame(width: 24, height: 24)
+                
+                Image(systemName: session.type.icon)
+                    .font(.caption)
+                    .foregroundColor(session.type.color)
+            }
             
-            Text(session.type.rawValue.capitalized)
-                .font(.caption)
-                .foregroundColor(.white.opacity(0.8))
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text(session.type.title)
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                    
+                    if !session.completedSuccessfully {
+                        Text("(Skipped)")
+                            .font(.caption2)
+                            .foregroundColor(.orange.opacity(0.8))
+                    }
+                }
+                
+                if let taskTitle = session.taskTitle {
+                    Text(taskTitle)
+                        .font(.caption2)
+                        .foregroundColor(.cyan.opacity(0.8))
+                        .lineLimit(1)
+                }
+            }
             
             Spacer()
             
-            Text(session.startTime, style: .time)
-                .font(.caption)
-                .foregroundColor(.white.opacity(0.6))
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(session.displayDuration)
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+                
+                Text(session.startTime, style: .time)
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.6))
+            }
         }
+        .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Session History View
+struct SessionHistoryView: View {
+    @Environment(\.dismiss) private var dismiss
+    let sessions: [StudySession]
+    
+    var body: some View {
+        NavigationView {
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        Color.blue.opacity(0.4),
+                        Color.black,
+                        Color.purple.opacity(0.3),
+                        Color.black
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+                
+                ScrollView {
+                    VStack(spacing: 16) {
+                        ForEach(sessions, id: \.id) { session in
+                            SessionDetailRow(session: session)
+                        }
+                        
+                        if sessions.isEmpty {
+                            Text("No sessions yet")
+                                .font(.subheadline)
+                                .foregroundColor(.white.opacity(0.7))
+                                .padding(.top, 40)
+                        }
+                    }
+                    .padding(20)
+                }
+            }
+            .navigationTitle("Session History")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .foregroundColor(.white)
+                }
+            }
+        }
+    }
+}
+
+struct SessionDetailRow: View {
+    let session: StudySession
+    
+    var body: some View {
+        HStack(spacing: 16) {
+            // Session type with completion status
+            VStack(spacing: 4) {
+                ZStack {
+                    Circle()
+                        .fill(session.type.color.opacity(0.2))
+                        .frame(width: 40, height: 40)
+                    
+                    Image(systemName: session.completedSuccessfully ? session.type.icon : "xmark")
+                        .font(.title3)
+                        .foregroundColor(session.completedSuccessfully ? session.type.color : .orange)
+                }
+                
+                Text(session.type.title)
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.7))
+            }
+            
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(session.displayDuration)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                    
+                    if !session.completedSuccessfully {
+                        Text("(Incomplete)")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                    }
+                }
+                
+                if let taskTitle = session.taskTitle {
+                    Text("Task: \(taskTitle)")
+                        .font(.caption)
+                        .foregroundColor(.cyan)
+                }
+                
+                Text("\(session.startTime, formatter: DateFormatter.sessionFormatter)")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.6))
+            }
+            
+            Spacer()
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.black.opacity(0.4))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(.white.opacity(0.2), lineWidth: 1)
+                )
+        )
     }
 }
 
 #Preview {
     PomodoroView()
+        .environmentObject(AuthViewModel())
 }

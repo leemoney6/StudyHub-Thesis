@@ -6,7 +6,7 @@ import FirebaseFirestore
 
 @MainActor
 class TaskViewModel: ObservableObject {
-    // MARK: - Published Properties (Same as before)
+    // MARK: - Published Properties
     @Published var tasks: [StudyTask] = []
     @Published var filteredTasks: [StudyTask] = []
     @Published var searchText = ""
@@ -16,12 +16,12 @@ class TaskViewModel: ObservableObject {
     @Published var showingTaskDetail = false
     @Published var selectedTask: StudyTask?
     
-    // MARK: - Firebase Integration Properties (NEW)
+    // MARK: - Firebase Integration Properties
     @Published var isLoading = false
     @Published var errorMessage = ""
     @Published var showingError = false
     
-    // MARK: - Firebase Instances (NEW)
+    // MARK: - Firebase Instances
     private let firestore = Firestore.firestore()
     private let auth = Auth.auth()
     private var tasksListener: ListenerRegistration?
@@ -37,7 +37,7 @@ class TaskViewModel: ObservableObject {
         tasksListener?.remove()
     }
     
-    // MARK: - Firebase Real-time Listener (NEW)
+    // MARK: - Firebase Real-time Listener
     private func setupTasksListener() {
         guard let currentUser = auth.currentUser else {
             print("⚠️ No authenticated user for tasks")
@@ -74,11 +74,11 @@ class TaskViewModel: ObservableObject {
             return
         }
         
-        // Convert Firestore documents to StudyTask objects
+        // ← FIXED: Removed problematic ID assignment
         let loadedTasks = documents.compactMap { document -> StudyTask? in
             do {
-                var task = try document.data(as: StudyTask.self)
-                task.id = document.documentID // Ensure ID matches document ID
+                let task = try document.data(as: StudyTask.self)
+                // ← REMOVED: task.id = document.documentID (this was causing the error)
                 return task
             } catch {
                 print("❌ Error decoding task \(document.documentID): \(error)")
@@ -92,7 +92,7 @@ class TaskViewModel: ObservableObject {
         print("✅ Loaded \(tasks.count) tasks from Firestore")
     }
     
-    // MARK: - Firebase CRUD Operations (UPDATED)
+    // MARK: - Firebase CRUD Operations
     func addTask(_ task: StudyTask) async {
         guard let currentUser = auth.currentUser else {
             handleError("Please sign in to add tasks")
@@ -102,19 +102,17 @@ class TaskViewModel: ObservableObject {
         isLoading = true
         
         do {
-            var newTask = task
-            newTask.id = UUID() // Generate new ID
+            let data = try Firestore.Encoder().encode(task)
             
-            let data = try Firestore.Encoder().encode(newTask)
-            
+            // ← FIXED: Use task.id.uuidString as document ID
             try await firestore
                 .collection("users")
                 .document(currentUser.uid)
                 .collection("tasks")
-                .document(newTask.id.uuidString)
+                .document(task.id.uuidString)
                 .setData(data)
             
-            print("✅ Task added successfully: \(newTask.title)")
+            print("✅ Task added successfully: \(task.title)")
             
         } catch {
             handleError("Failed to add task: \(error.localizedDescription)")
@@ -173,7 +171,7 @@ class TaskViewModel: ObservableObject {
         await updateTask(updatedTask)
     }
     
-    // MARK: - User Management (NEW)
+    // MARK: - User Management
     func refreshForNewUser() {
         tasksListener?.remove()
         tasks = []
@@ -187,7 +185,7 @@ class TaskViewModel: ObservableObject {
         filteredTasks = []
     }
     
-    // MARK: - Filtering (Same as before)
+    // MARK: - Filtering
     func updateFilteredTasks() {
         var filtered = tasks
         
@@ -226,7 +224,7 @@ class TaskViewModel: ObservableObject {
         filteredTasks = filtered
     }
     
-    // MARK: - Statistics (Same as before)
+    // MARK: - Statistics
     var completedTasksCount: Int {
         tasks.filter { $0.isCompleted }.count
     }
@@ -253,7 +251,7 @@ class TaskViewModel: ObservableObject {
         }
     }
     
-    // MARK: - Error Handling (NEW)
+    // MARK: - Error Handling
     private func handleError(_ message: String) {
         errorMessage = message
         showingError = true
@@ -270,7 +268,7 @@ class TaskViewModel: ObservableObject {
         showingError = false
     }
     
-    // MARK: - Demo Data (NEW - for testing)
+    // MARK: - Demo Data
     func addDemoTasks() async {
         let calendar = Calendar.current
         let today = Date()
@@ -302,57 +300,5 @@ class TaskViewModel: ObservableObject {
         for task in demoTasks {
             await addTask(task)
         }
-    }
-}
-
-// MARK: - StudyTask Firestore Compatibility (UPDATED)
-extension StudyTask {
-    // Custom init for Firestore decoding
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        
-        // Handle ID as either UUID or String from Firestore
-        if let uuidString = try? container.decode(String.self, forKey: .id),
-           let uuid = UUID(uuidString: uuidString) {
-            self.id = uuid
-        } else {
-            self.id = UUID()
-        }
-        
-        self.title = try container.decode(String.self, forKey: .title)
-        self.description = try container.decode(String.self, forKey: .description)
-        self.priority = try container.decode(TaskPriority.self, forKey: .priority)
-        self.isCompleted = try container.decode(Bool.self, forKey: .isCompleted)
-        self.subject = try container.decode(String.self, forKey: .subject)
-        
-        // Handle Firestore Timestamp
-        if let timestamp = try? container.decode(Timestamp.self, forKey: .dueDate) {
-            self.dueDate = timestamp.dateValue()
-        } else {
-            self.dueDate = try container.decode(Date.self, forKey: .dueDate)
-        }
-        
-        if let timestamp = try? container.decode(Timestamp.self, forKey: .createdDate) {
-            self.createdDate = timestamp.dateValue()
-        } else {
-            self.createdDate = try container.decode(Date.self, forKey: .createdDate)
-        }
-    }
-    
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        
-        try container.encode(id.uuidString, forKey: .id) // Encode UUID as string
-        try container.encode(title, forKey: .title)
-        try container.encode(description, forKey: .description)
-        try container.encode(priority, forKey: .priority)
-        try container.encode(isCompleted, forKey: .isCompleted)
-        try container.encode(subject, forKey: .subject)
-        try container.encode(Timestamp(date: dueDate), forKey: .dueDate) // Convert to Timestamp
-        try container.encode(Timestamp(date: createdDate), forKey: .createdDate)
-    }
-    
-    private enum CodingKeys: String, CodingKey {
-        case id, title, description, priority, isCompleted, subject, dueDate, createdDate
     }
 }

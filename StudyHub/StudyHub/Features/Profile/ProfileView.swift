@@ -2,7 +2,8 @@ import SwiftUI
 import Firebase
 
 struct ProfileView: View {
-    @EnvironmentObject var authViewModel: AuthViewModel  // ← FIXED: Use environment object
+    @EnvironmentObject var authViewModel: AuthViewModel
+    @StateObject private var statsViewModel = UserStatsViewModel()
     @State private var showingEditProfile = false
     @State private var showingLogoutAlert = false
     
@@ -56,6 +57,11 @@ struct ProfileView: View {
             }
         } message: {
             Text("Are you sure you want to sign out?")
+        }
+        .onAppear{
+            if let uid = authViewModel.currentUser?.uid {
+                        statsViewModel.startListening(userId: uid)
+                    }
         }
     }
 }
@@ -192,16 +198,35 @@ private extension ProfileView {
             SectionHeader(title: "Statistics", icon: "chart.bar.fill")
             
             LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 16) {
-                StatCard(title: "Tasks Completed", value: "0", icon: "checkmark.circle.fill", color: .green)
-                StatCard(title: "Study Sessions", value: "0", icon: "clock.fill", color: .cyan)
-                StatCard(title: "Total Hours", value: "0", icon: "hourglass", color: .orange)
-                StatCard(title: "Streak", value: "0 days", icon: "flame.fill", color: .red)
+                StatCard(
+                    title: "Tasks Completed",
+                    value: "\(statsViewModel.tasksCompleted)",
+                    icon: "checkmark.circle.fill",
+                    color: .green
+                )
+                StatCard(
+                    title: "Study Sessions",
+                    value: "\(statsViewModel.studySessions)",
+                    icon: "clock.fill",
+                    color: .cyan
+                )
+                StatCard(
+                    title: "Total Hours",
+                    value: String(format: "%.1f", statsViewModel.totalHours),
+                    icon: "hourglass",
+                    color: .orange
+                )
+                StatCard(
+                    title: "Streak",
+                    value: "\(statsViewModel.streakDays) days",
+                    icon: "flame.fill",
+                    color: .red
+                )
             }
         }
         .padding(24)
         .background(premiumCardBackground)
     }
-    
     var accountManagementSection: some View {
         VStack(spacing: 12) {
             // Settings Button

@@ -42,10 +42,16 @@ struct TaskFiltersView: View {
                 }
             }
         }
+        // Show Firebase errors if any occur during filtering
+        .alert("Error", isPresented: $viewModel.showingError) {
+            Button("OK") { }
+        } message: {
+            Text(viewModel.errorMessage)
+        }
     }
 }
 
-// MARK: - Filter Sections
+// MARK: - Filter Sections (EXACT SAME DESIGN)
 private extension TaskFiltersView {
     
     var priorityFilterSection: some View {
@@ -219,4 +225,6 @@ private extension TaskFiltersView {
     }
 }
 
-
+#Preview {
+    TaskFiltersView(viewModel: TaskViewModel())
+}

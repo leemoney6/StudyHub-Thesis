@@ -1,7 +1,9 @@
 import SwiftUI
 
 struct GroupsView: View {
+    @EnvironmentObject var authViewModel: AuthViewModel
     @StateObject private var groupsViewModel = StudyGroupsViewModel()
+    
     @State private var showingCreateGroup = false
     @State private var showingJoinGroup = false
     @State private var selectedGroup: StudyGroup?
@@ -13,16 +15,16 @@ struct GroupsView: View {
                 
                 ScrollView {
                     VStack(spacing: 24) {
-                        // Header Stats
+                        // Header stats
                         groupStatsSection
                         
-                        // My Groups Section
+                        // My Groups
                         myGroupsSection
                         
                         // Discover Groups
                         discoverGroupsSection
                         
-                        // Recent Group Activity
+                        // Recent Activity
                         recentActivitySection
                         
                         Spacer(minLength: 50)
@@ -50,17 +52,25 @@ struct GroupsView: View {
         }
         .sheet(isPresented: $showingCreateGroup) {
             CreateGroupView()
+                .environmentObject(groupsViewModel)
         }
         .sheet(isPresented: $showingJoinGroup) {
             JoinGroupView()
+                .environmentObject(groupsViewModel)
         }
         .sheet(item: $selectedGroup) { group in
             GroupDetailView(group: group)
+        }
+        .onAppear {
+            if let uid = authViewModel.currentUser?.uid {
+                groupsViewModel.configure(userId: uid)
+            }
         }
     }
 }
 
 // MARK: - Sections
+
 private extension GroupsView {
     
     var groupStatsSection: some View {
@@ -159,9 +169,15 @@ private extension GroupsView {
         VStack(alignment: .leading, spacing: 16) {
             SectionHeader(title: "Recent Activity", icon: "clock.arrow.circlepath")
             
-            LazyVStack(spacing: 10) {
-                ForEach(groupsViewModel.recentActivities, id: \.id) { activity in
-                    ActivityRow(activity: activity)
+            if groupsViewModel.recentActivities.isEmpty {
+                Text("No recent group activity yet.")
+                    .font(.subheadline)
+                    .foregroundColor(.white.opacity(0.7))
+            } else {
+                LazyVStack(spacing: 10) {
+                    ForEach(groupsViewModel.recentActivities, id: \.id) { activity in
+                        ActivityRow(activity: activity)
+                    }
                 }
             }
         }
@@ -197,7 +213,8 @@ private extension GroupsView {
     }
 }
 
-// MARK: - Supporting Views
+// MARK: - Supporting Views (same UI as you had)
+
 struct GroupStatCard: View {
     let title: String
     let value: String
@@ -249,7 +266,7 @@ struct GroupCard: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 16) {
-                // Group Icon
+                // Icon
                 ZStack {
                     RoundedRectangle(cornerRadius: 12)
                         .fill(group.subject.color.opacity(0.2))
@@ -261,7 +278,7 @@ struct GroupCard: View {
                         .foregroundColor(group.subject.color)
                 }
                 
-                // Group Info
+                // Info
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         Text(group.name)
@@ -301,7 +318,6 @@ struct GroupCard: View {
                 
                 Spacer()
                 
-                // Status Indicator
                 VStack(spacing: 4) {
                     if group.hasActiveSession {
                         VStack(spacing: 2) {
@@ -340,7 +356,6 @@ struct DiscoverGroupCard: View {
     
     var body: some View {
         VStack(spacing: 12) {
-            // Group Header
             VStack(spacing: 8) {
                 ZStack {
                     Circle()
@@ -367,7 +382,6 @@ struct DiscoverGroupCard: View {
                 }
             }
             
-            // Group Stats
             VStack(spacing: 6) {
                 HStack(spacing: 4) {
                     Image(systemName: "person.2")
@@ -386,7 +400,6 @@ struct DiscoverGroupCard: View {
                 .foregroundColor(.white.opacity(0.7))
             }
             
-            // Join Button
             Button("Join") {
                 onJoin()
             }
@@ -440,23 +453,334 @@ struct ActivityRow: View {
     }
 }
 
-struct PrimaryButtonStyle: ButtonStyle {
-    let color: Color
+// MARK: - Create / Join / Detail views (unchanged visually, but using VM)
+
+struct CreateGroupView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var groupsViewModel: StudyGroupsViewModel
     
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.subheadline)
-            .fontWeight(.semibold)
-            .foregroundColor(.white)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 12)
-            .background(color.opacity(configuration.isPressed ? 0.7 : 1.0))
-            .cornerRadius(25)
-            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
-            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
+    @State private var groupName = ""
+    @State private var selectedSubject: StudySubject = .computerScience
+    @State private var weeklyGoal: Int = 10
+    @State private var isPublic = true
+    
+    var body: some View {
+        NavigationView {
+            ZStack {
+                backgroundGradient
+                
+                ScrollView {
+                    VStack(spacing: 24) {
+                        groupIconPreview
+                        groupDetailsForm
+                        groupSettingsForm
+                        Spacer(minLength: 50)
+                    }
+                    .padding(20)
+                }
+            }
+            .navigationTitle("Create Group")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundColor(.white)
+                }
+                
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Create") {
+                        Task {
+                            do {
+                                try await groupsViewModel.createGroup(
+                                    name: groupName,
+                                    subject: selectedSubject,
+                                    weeklyGoal: weeklyGoal,
+                                    isPublic: isPublic
+                                )
+                                dismiss()
+                            } catch {
+                                print("❌ Failed to create group:", error.localizedDescription)
+                            }
+                        }
+                    }
+                    .foregroundColor(.cyan)
+                    .fontWeight(.semibold)
+                    .disabled(groupName.isEmpty)
+                }
+            }
+        }
+    }
+    
+    private var groupIconPreview: some View {
+        VStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(selectedSubject.color.opacity(0.2))
+                    .frame(width: 100, height: 100)
+                
+                if groupName.isEmpty {
+                    Image(systemName: selectedSubject.icon)
+                        .font(.system(size: 40))
+                        .foregroundColor(selectedSubject.color)
+                } else {
+                    Text(String(groupName.prefix(2).uppercased()))
+                        .font(.system(size: 32, weight: .bold))
+                        .foregroundColor(selectedSubject.color)
+                }
+            }
+            
+            Text(groupName.isEmpty ? "Group Name" : groupName)
+                .font(.title2)
+                .fontWeight(.semibold)
+                .foregroundColor(.white)
+            
+            Text(selectedSubject.rawValue)
+                .font(.subheadline)
+                .foregroundColor(selectedSubject.color)
+        }
+    }
+    
+    private var groupDetailsForm: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            SectionHeader(title: "Group Details", icon: "info.circle")
+            
+            VStack(spacing: 16) {
+                CustomTextField(placeholder: "Group Name", text: $groupName)
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Subject")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                    
+                    Picker("Subject", selection: $selectedSubject) {
+                        ForEach(StudySubject.allCases, id: \.self) { subject in
+                            HStack {
+                                Image(systemName: subject.icon)
+                                Text(subject.rawValue)
+                            }
+                            .tag(subject)
+                        }
+                    }
+                    .pickerStyle(MenuPickerStyle())
+                    .accentColor(.cyan)
+                }
+            }
+        }
+        .padding(20)
+        .background(cardBackground)
+    }
+    
+    private var groupSettingsForm: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            SectionHeader(title: "Settings", icon: "gearshape")
+            
+            VStack(spacing: 16) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Weekly Goal")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                        
+                        Text("\(weeklyGoal) hours per week")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                    
+                    Spacer()
+                    
+                    Stepper("", value: $weeklyGoal, in: 1...30)
+                        .labelsHidden()
+                }
+                
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Group Visibility")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                        
+                        Text(isPublic ? "Anyone can discover and join" : "Invite only with group code")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                    
+                    Spacer()
+                    
+                    Toggle("", isOn: $isPublic)
+                        .labelsHidden()
+                        .toggleStyle(SwitchToggleStyle(tint: .cyan))
+                }
+            }
+        }
+        .padding(20)
+        .background(cardBackground)
+    }
+    
+    private var cardBackground: some View {
+        RoundedRectangle(cornerRadius: 16)
+            .fill(.black.opacity(0.4))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(.white.opacity(0.2), lineWidth: 1)
+            )
+    }
+    
+    private var backgroundGradient: some View {
+        LinearGradient(
+            colors: [
+                Color.blue.opacity(0.4),
+                Color.black,
+                Color.purple.opacity(0.3),
+                Color.black
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        .ignoresSafeArea()
+    }
+}
+
+struct JoinGroupView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var groupsViewModel: StudyGroupsViewModel
+    
+    @State private var groupCode = ""
+    
+    var body: some View {
+        NavigationView {
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        Color.blue.opacity(0.4),
+                        Color.black,
+                        Color.purple.opacity(0.3),
+                        Color.black
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+                
+                VStack(spacing: 30) {
+                    VStack(spacing: 16) {
+                        Image(systemName: "qrcode.viewfinder")
+                            .font(.system(size: 64))
+                            .foregroundColor(.cyan)
+                        
+                        VStack(spacing: 8) {
+                            Text("Join Study Group")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                            
+                            Text("Enter the 6-character group code to join")
+                                .font(.subheadline)
+                                .foregroundColor(.white.opacity(0.8))
+                                .multilineTextAlignment(.center)
+                        }
+                    }
+                    
+                    VStack(spacing: 20) {
+                        CustomTextField(placeholder: "Group Code (e.g. ABC123)", text: $groupCode)
+                            .textInputAutocapitalization(.characters)
+                        
+                        Button("Join Group") {
+                            Task {
+                                do {
+                                    try await groupsViewModel.joinGroup(code: groupCode)
+                                    dismiss()
+                                } catch {
+                                    print("❌ Failed to join group:", error.localizedDescription)
+                                }
+                            }
+                        }
+                        .buttonStyle(PrimaryButtonStyle(color: .cyan))
+                        .disabled(groupCode.trimmingCharacters(in: .whitespaces).count < 6)
+                    }
+                    .padding(.horizontal, 20)
+                    
+                    Spacer()
+                }
+                .padding(40)
+            }
+            .navigationTitle("Join Group")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundColor(.white)
+                }
+            }
+        }
+    }
+}
+
+struct GroupDetailView: View {
+    let group: StudyGroup
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        NavigationView {
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        Color.blue.opacity(0.4),
+                        Color.black,
+                        Color.purple.opacity(0.3),
+                        Color.black
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+                
+                VStack(spacing: 24) {
+                    VStack(spacing: 16) {
+                        ZStack {
+                            Circle()
+                                .fill(group.subject.color.opacity(0.2))
+                                .frame(width: 100, height: 100)
+                            
+                            Text(String(group.name.prefix(2).uppercased()))
+                                .font(.system(size: 32, weight: .bold))
+                                .foregroundColor(group.subject.color)
+                        }
+                        
+                        VStack(spacing: 8) {
+                            Text(group.name)
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                            
+                            Text(group.subject.rawValue)
+                                .font(.subheadline)
+                                .foregroundColor(group.subject.color)
+                        }
+                    }
+                    
+                    Text("Group Detail View - Coming Soon!")
+                        .font(.headline)
+                        .foregroundColor(.white.opacity(0.8))
+                    
+                    Spacer()
+                }
+                .padding(40)
+            }
+            .navigationTitle(group.name)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Close") { dismiss() }
+                        .foregroundColor(.white)
+                }
+            }
+        }
     }
 }
 
 #Preview {
     GroupsView()
+        .environmentObject(AuthViewModel())
 }

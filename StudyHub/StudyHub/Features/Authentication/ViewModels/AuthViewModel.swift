@@ -96,7 +96,6 @@ class AuthViewModel: ObservableObject {
         }
     }
     
-    // MARK: - Profile Completion Method (NEW)
     func completeProfile(universityName: String, majorFieldOfStudy: String, yearOfStudy: String) async {
         guard let currentUser = currentUser,
               var userProfile = userProfile else {
@@ -104,7 +103,6 @@ class AuthViewModel: ObservableObject {
             return
         }
         
-        // Update profile with academic info
         userProfile.universityName = universityName
         userProfile.majorFieldOfStudy = majorFieldOfStudy
         userProfile.yearOfStudy = yearOfStudy
@@ -114,8 +112,7 @@ class AuthViewModel: ObservableObject {
             await MainActor.run {
                 self.needsProfileCompletion = false
                 self.isAuthenticated = true
-                print("✅ Profile completed successfully")
-            }
+                        }
         } catch {
             await MainActor.run {
                 self.handleError("Failed to complete profile: \(error.localizedDescription)")
