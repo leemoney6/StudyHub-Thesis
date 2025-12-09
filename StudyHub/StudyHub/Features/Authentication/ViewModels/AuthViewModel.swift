@@ -28,6 +28,13 @@ class AuthViewModel: ObservableObject {
     @Published var fullName = ""
     @Published var profileImage: UIImage?
     
+    // MARK: - Password Reset Fields ← NEW 🔑
+    @Published var resetEmail = ""
+    @Published var isResettingPassword = false
+    @Published var resetEmailSent = false
+    @Published var resetMessage = ""
+    @Published var showResetAlert = false
+    
     // MARK: - Academic Information (SAME AS BEFORE)
     @Published var universityName = ""
     @Published var majorFieldOfStudy = ""
@@ -112,12 +119,101 @@ class AuthViewModel: ObservableObject {
             await MainActor.run {
                 self.needsProfileCompletion = false
                 self.isAuthenticated = true
-                        }
+            }
         } catch {
             await MainActor.run {
                 self.handleError("Failed to complete profile: \(error.localizedDescription)")
             }
         }
+    }
+    
+    
+    func sendPasswordReset() async {
+        guard !resetEmail.isEmpty else {
+            handleResetError("Please enter your email address")
+            return
+        }
+        
+        guard isEmailValid(resetEmail) else {
+            handleResetError("Please enter a valid email address")
+            return
+        }
+        
+        isResettingPassword = true
+        clearResetError()
+        
+        do {
+             
+            try await auth.sendPasswordReset(withEmail: resetEmail)
+            
+            await MainActor.run {
+                self.isResettingPassword = false
+                self.resetEmailSent = true
+                self.resetMessage = "Password reset email sent to \(self.resetEmail). Check your inbox and follow the instructions to reset your password."
+                self.showResetAlert = true
+                print("✅ Password reset email sent to: \(self.resetEmail)")
+            }
+            
+        } catch {
+            await MainActor.run {
+                self.isResettingPassword = false
+                self.handleResetAuthError(error)
+            }
+        }
+    }
+    
+    private func handleResetAuthError(_ error: Error) {
+        let message: String
+        
+        if let authError = error as? AuthErrorCode {
+            switch authError.code {
+            case .invalidEmail:
+                message = "Please enter a valid email address"
+            case .userNotFound:
+                message = "No account found with this email address"
+            case .networkError:
+                message = "Network error. Please check your internet connection"
+            case .tooManyRequests:
+                message = "Too many requests. Please try again later"
+            default:
+                message = "Failed to send reset email: \(error.localizedDescription)"
+            }
+        } else {
+            message = "An unexpected error occurred: \(error.localizedDescription)"
+        }
+        
+        handleResetError(message)
+    }
+    
+    private func handleResetError(_ message: String) {
+        resetMessage = message
+        showResetAlert = true
+        print("❌ Password reset error: \(message)")
+    }
+    
+    private func clearResetError() {
+        resetMessage = ""
+        showResetAlert = false
+        resetEmailSent = false
+    }
+    
+    func clearResetForm() {
+        resetEmail = ""
+        resetEmailSent = false
+        isResettingPassword = false
+        clearResetError()
+    }
+    
+    // ← NEW: Validation helper for reset email
+    private func isEmailValid(_ email: String) -> Bool {
+        let emailRegex = "^[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
+        let emailPredicate = NSPredicate(format:"SELF MATCHES %@", emailRegex)
+        return emailPredicate.evaluate(with: email)
+    }
+    
+    // ← NEW: Computed property for reset button state
+    var canSendReset: Bool {
+        return !resetEmail.isEmpty && !isResettingPassword && isEmailValid(resetEmail)
     }
     
     // MARK: - Validation Properties (SAME AS BEFORE)
@@ -461,6 +557,9 @@ class AuthViewModel: ObservableObject {
         
         // Reset states
         needsProfileCompletion = false
+        
+        // ← NEW: Clear reset fields too
+        clearResetForm()
         
         clearError()
     }

@@ -3,9 +3,11 @@ import Firebase
 
 struct ProfileView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
-    @StateObject private var statsViewModel = UserStatsViewModel()
+    @StateObject private var statsViewModel = UserStatsViewModel() // ← Uses Firebase version!
     @State private var showingEditProfile = false
     @State private var showingLogoutAlert = false
+    @State private var showingAppSettings = false  // ← NEW
+    @State private var showingHelpSupport = false  // ← NEW
     
     var body: some View {
         NavigationView {
@@ -23,10 +25,10 @@ struct ProfileView: View {
                         // Study Preferences Section
                         studyPreferencesSection
                         
-                        // Statistics Section
+                        // Statistics Section (NOW WITH REAL FIREBASE DATA!)
                         statisticsSection
                         
-                        // Account Management Section
+                        // Account Management Section (NOW CONNECTED!)
                         accountManagementSection
                         
                         Spacer(minLength: 50)
@@ -48,7 +50,14 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $showingEditProfile) {
             EditProfileView()
-                .environmentObject(authViewModel)  // ← Pass environment object to EditProfileView
+                .environmentObject(authViewModel)
+        }
+        .sheet(isPresented: $showingAppSettings) {  // ← NEW
+            AppSettingsView()
+                .environmentObject(authViewModel)
+        }
+        .sheet(isPresented: $showingHelpSupport) {  // ← NEW
+            HelpSupportView()
         }
         .alert("Sign Out", isPresented: $showingLogoutAlert) {
             Button("Cancel", role: .cancel) { }
@@ -58,10 +67,22 @@ struct ProfileView: View {
         } message: {
             Text("Are you sure you want to sign out?")
         }
-        .onAppear{
+        .onAppear {
+            // ← FIXED: Connect to real Firebase statistics
             if let uid = authViewModel.currentUser?.uid {
-                        statsViewModel.startListening(userId: uid)
-                    }
+                statsViewModel.startListening(userId: uid)
+            }
+        }
+        .onDisappear {
+            // Clean up listeners when view disappears
+            statsViewModel.stopListening()
+        }
+        .onChange(of: authViewModel.isAuthenticated) { isAuthenticated in
+            if isAuthenticated, let uid = authViewModel.currentUser?.uid {
+                statsViewModel.startListening(userId: uid)
+            } else {
+                statsViewModel.stopListening()
+            }
         }
     }
 }
@@ -101,7 +122,6 @@ private extension ProfileView {
             }
             
             VStack(spacing: 12) {
-                // ← FIXED: Use real user data
                 Text(authViewModel.userProfile?.fullName ?? "User")
                     .font(.title2)
                     .fontWeight(.bold)
@@ -111,7 +131,6 @@ private extension ProfileView {
                     Image(systemName: "graduationcap.fill")
                         .foregroundColor(.cyan)
                         .font(.caption)
-                    // ← FIXED: Use real major field
                     Text("\(authViewModel.userProfile?.majorFieldOfStudy ?? "Student") Student")
                         .font(.subheadline)
                         .fontWeight(.medium)
@@ -121,6 +140,23 @@ private extension ProfileView {
                 .padding(.vertical, 8)
                 .background(darkCardBackground)
                 .cornerRadius(12)
+                
+                // ← NEW: Show current streak prominently
+                if statsViewModel.currentStreak > 0 {
+                    HStack(spacing: 8) {
+                        Image(systemName: "flame.fill")
+                            .foregroundColor(.orange)
+                            .font(.caption)
+                        Text("\(statsViewModel.currentStreak) day streak!")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.orange)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(.orange.opacity(0.2))
+                    .cornerRadius(10)
+                }
             }
         }
         .padding(24)
@@ -132,7 +168,6 @@ private extension ProfileView {
             SectionHeader(title: "Personal Information", icon: "person.text.rectangle")
             
             VStack(spacing: 16) {
-                // ← FIXED: Use real user data
                 InfoRow(icon: "envelope.fill", title: "Email", value: authViewModel.userProfile?.email ?? "No email")
                 Divider().background(.white.opacity(0.2))
                 InfoRow(icon: "building.2.fill", title: "University", value: authViewModel.userProfile?.universityName ?? "Not specified")
@@ -148,7 +183,6 @@ private extension ProfileView {
         .background(premiumCardBackground)
     }
     
-    // ← FIXED: Calculate member since from real creation date
     private var memberSinceText: String {
         guard let createdDate = authViewModel.userProfile?.createdDate else {
             return "Recently"
@@ -164,7 +198,6 @@ private extension ProfileView {
             SectionHeader(title: "Study Preferences", icon: "slider.horizontal.3")
             
             VStack(spacing: 16) {
-                // ← FIXED: Use real user preferences
                 PreferenceRow(
                     icon: "timer",
                     title: "Default Session",
@@ -186,63 +219,164 @@ private extension ProfileView {
                     color: .blue
                 )
                 Divider().background(.white.opacity(0.2))
-                PreferenceRow(icon: "target", title: "Daily Goal", value: "6 sessions", color: .purple)
+                // ← ENHANCED: Show actual completion rate
+                PreferenceRow(
+                    icon: "target",
+                    title: "Completion Rate",
+                    value: String(format: "%.0f%%", statsViewModel.completionRate * 100),
+                    color: .purple
+                )
             }
         }
         .padding(24)
         .background(premiumCardBackground)
     }
     
+    // ← ENHANCED: Real Firebase Statistics Section
     var statisticsSection: some View {
         VStack(alignment: .leading, spacing: 20) {
-            SectionHeader(title: "Statistics", icon: "chart.bar.fill")
+            HStack {
+                SectionHeader(title: "Statistics", icon: "chart.bar.fill")
+                
+                if statsViewModel.isLoading {
+                    Spacer()
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .cyan))
+                        .scaleEffect(0.8)
+                }
+            }
             
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 16) {
-                StatCard(
-                    title: "Tasks Completed",
-                    value: "\(statsViewModel.tasksCompleted)",
-                    icon: "checkmark.circle.fill",
-                    color: .green
-                )
-                StatCard(
-                    title: "Study Sessions",
-                    value: "\(statsViewModel.studySessions)",
-                    icon: "clock.fill",
-                    color: .cyan
-                )
-                StatCard(
-                    title: "Total Hours",
-                    value: String(format: "%.1f", statsViewModel.totalHours),
-                    icon: "hourglass",
-                    color: .orange
-                )
-                StatCard(
-                    title: "Streak",
-                    value: "\(statsViewModel.streakDays) days",
-                    icon: "flame.fill",
-                    color: .red
-                )
+            if statsViewModel.errorMessage.isEmpty {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 16) {
+                    // ← REAL FIREBASE DATA
+                    StatCard(
+                        title: "Tasks Completed",
+                        value: "\(statsViewModel.tasksCompleted)",
+                        icon: "checkmark.circle.fill",
+                        color: .green
+                    )
+                    StatCard(
+                        title: "Study Sessions",
+                        value: "\(statsViewModel.studySessions)",
+                        icon: "clock.fill",
+                        color: .cyan
+                    )
+                    StatCard(
+                        title: "Total Hours",
+                        value: String(format: "%.1f", statsViewModel.totalHours),
+                        icon: "hourglass",
+                        color: .orange
+                    )
+                    StatCard(
+                        title: "Streak",
+                        value: "\(statsViewModel.streakDays) days",
+                        icon: "flame.fill",
+                        color: .red
+                    )
+                }
+                
+                // ← NEW: Additional Statistics Row
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 16) {
+                    StatCard(
+                        title: "This Week",
+                        value: "\(statsViewModel.thisWeekSessions)",
+                        icon: "calendar.badge.clock",
+                        color: .blue
+                    )
+                    StatCard(
+                        title: "Avg Session",
+                        value: String(format: "%.0f min", statsViewModel.averageSessionLength),
+                        icon: "timer.circle",
+                        color: .purple
+                    )
+                }
+                
+                // ← NEW: Detailed Statistics Summary
+                if statsViewModel.studySessions > 0 {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Study Insights")
+                            .font(.subheadline)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                        
+                        VStack(spacing: 8) {
+                            InsightRow(
+                                icon: "target",
+                                title: "Completion Rate",
+                                value: String(format: "%.0f%%", statsViewModel.completionRate * 100),
+                                color: statsViewModel.completionRate >= 0.8 ? .green : statsViewModel.completionRate >= 0.6 ? .orange : .red
+                            )
+                            
+                            if statsViewModel.longestSessionMinutes > 0 {
+                                InsightRow(
+                                    icon: "stopwatch",
+                                    title: "Longest Session",
+                                    value: "\(statsViewModel.longestSessionMinutes) min",
+                                    color: .cyan
+                                )
+                            }
+                            
+                            if !statsViewModel.mostProductiveDay.isEmpty {
+                                InsightRow(
+                                    icon: "calendar.badge.plus",
+                                    title: "Most Productive Day",
+                                    value: statsViewModel.mostProductiveDay,
+                                    color: .blue
+                                )
+                            }
+                        }
+                    }
+                    .padding(.top, 16)
+                }
+            } else {
+                // Error state
+                VStack(spacing: 12) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundColor(.orange)
+                        .font(.title2)
+                    
+                    Text("Unable to load statistics")
+                        .foregroundColor(.white.opacity(0.7))
+                        .font(.subheadline)
+                    
+                    Button("Try Again") {
+                        statsViewModel.refreshStatistics()
+                    }
+                    .foregroundColor(.cyan)
+                    .fontWeight(.semibold)
+                }
+                .padding(.vertical, 20)
             }
         }
         .padding(24)
         .background(premiumCardBackground)
     }
+    
+    // ← ENHANCED: Connected Account Management Section
     var accountManagementSection: some View {
         VStack(spacing: 12) {
-            // Settings Button
+            // Refresh Statistics Button
+            ActionButton(
+                icon: "arrow.clockwise",
+                title: "Refresh Statistics",
+                color: .cyan,
+                action: { statsViewModel.refreshStatistics() }
+            )
+            
+            // Settings Button (NOW CONNECTED! 🎯)
             ActionButton(
                 icon: "gearshape.fill",
                 title: "App Settings",
                 color: .blue,
-                action: { /* Settings action */ }
+                action: { showingAppSettings = true }  // ← CONNECTED!
             )
             
-            // Help & Support Button
+            // Help & Support Button (NOW CONNECTED! 🎯)
             ActionButton(
                 icon: "questionmark.circle.fill",
                 title: "Help & Support",
                 color: .green,
-                action: { /* Help action */ }
+                action: { showingHelpSupport = true }  // ← CONNECTED!
             )
             
             // Sign Out Button
@@ -437,6 +571,35 @@ struct StatCard: View {
     }
 }
 
+// ← NEW: Insight Row Component
+struct InsightRow: View {
+    let icon: String
+    let title: String
+    let value: String
+    let color: Color
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .foregroundColor(color)
+                .font(.caption)
+                .frame(width: 20)
+            
+            Text(title)
+                .font(.caption)
+                .foregroundColor(.white.opacity(0.8))
+            
+            Spacer()
+            
+            Text(value)
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundColor(.white)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
 struct ActionButton: View {
     let icon: String
     let title: String
@@ -483,12 +646,11 @@ struct ActionButton: View {
     }
 }
 
-// MARK: - Edit Profile View (FIXED WITH REAL DATA)
+// MARK: - Edit Profile View (Same as before)
 struct EditProfileView: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject var authViewModel: AuthViewModel  // ← FIXED: Use environment object
+    @EnvironmentObject var authViewModel: AuthViewModel
     
-    // Form fields - loaded from real user data
     @State private var fullName = ""
     @State private var email = ""
     @State private var universityName = ""
@@ -523,7 +685,6 @@ struct EditProfileView: View {
                 
                 ScrollView {
                     VStack(spacing: 24) {
-                        
                         // Personal Information
                         VStack(alignment: .leading, spacing: 20) {
                             SectionHeader(title: "Personal Information", icon: "person.text.rectangle")
@@ -531,12 +692,11 @@ struct EditProfileView: View {
                             VStack(spacing: 16) {
                                 CustomTextField(placeholder: "Full Name", text: $fullName)
                                 CustomTextField(placeholder: "Email", text: $email)
-                                    .disabled(true) // Email shouldn't be editable
+                                    .disabled(true)
                                     .opacity(0.7)
                                 CustomTextField(placeholder: "University", text: $universityName)
                                 CustomTextField(placeholder: "Major", text: $majorFieldOfStudy)
                                 
-                                // Year Picker
                                 Menu {
                                     ForEach(yearOptions, id: \.self) { year in
                                         Button(year) {
@@ -569,7 +729,6 @@ struct EditProfileView: View {
                             SectionHeader(title: "Study Preferences", icon: "slider.horizontal.3")
                             
                             VStack(spacing: 20) {
-                                // Study Duration Slider
                                 VStack(alignment: .leading, spacing: 8) {
                                     Text("Study Session: \(preferredStudyDuration) minutes")
                                         .foregroundColor(.white)
@@ -586,7 +745,6 @@ struct EditProfileView: View {
                                     .accentColor(.orange)
                                 }
                                 
-                                // Break Duration Slider
                                 VStack(alignment: .leading, spacing: 8) {
                                     Text("Break Duration: \(preferredBreakDuration) minutes")
                                         .foregroundColor(.white)
@@ -603,7 +761,6 @@ struct EditProfileView: View {
                                     .accentColor(.green)
                                 }
                                 
-                                // Notifications Toggle
                                 HStack {
                                     Text("Notifications")
                                         .foregroundColor(.white)
@@ -657,7 +814,6 @@ struct EditProfileView: View {
         }
     }
     
-    // ← FIXED: Load real user data when view appears
     private func loadUserData() {
         guard let profile = authViewModel.userProfile else { return }
         
@@ -673,7 +829,6 @@ struct EditProfileView: View {
         achievementNotifications = profile.achievementNotifications
     }
     
-    // ← FIXED: Actually save changes to Firebase
     private func saveProfile() async {
         guard var profile = authViewModel.userProfile else {
             errorMessage = "Unable to load profile data"
@@ -683,7 +838,6 @@ struct EditProfileView: View {
         
         isLoading = true
         
-        // Update profile with form data
         profile.fullName = fullName.trimmingCharacters(in: .whitespaces)
         profile.universityName = universityName.trimmingCharacters(in: .whitespaces)
         profile.majorFieldOfStudy = majorFieldOfStudy.trimmingCharacters(in: .whitespaces)
@@ -695,16 +849,14 @@ struct EditProfileView: View {
         profile.achievementNotifications = achievementNotifications
         
         do {
-            // Save to Firestore
             let firestore = Firestore.firestore()
             let data = try Firestore.Encoder().encode(profile)
             try await firestore.collection("users").document(profile.id).setData(data)
             
             await MainActor.run {
-                // Update AuthViewModel's profile
                 authViewModel.userProfile = profile
                 isLoading = false
-                dismiss() // Close edit view on success
+                dismiss()
             }
         } catch {
             await MainActor.run {

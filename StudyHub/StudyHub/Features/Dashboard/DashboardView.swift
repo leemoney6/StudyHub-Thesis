@@ -1,27 +1,25 @@
 import SwiftUI
+import Combine
 
 struct DashboardView: View {
+    @Binding var selectedTab: AppTab
+    
     @State private var currentTime = Date()
     @State private var breathingAnimation = false
     
+    @StateObject private var timerViewModel = PomodoroTimerViewModel()
+    @StateObject private var taskViewModel = TaskViewModel()
+    
     var body: some View {
-        GeometryReader { geometry in
+        GeometryReader { _ in
             ZStack {
-                // Same background as login
                 enhancedBackground
                 
                 ScrollView {
                     VStack(spacing: 24) {
-                        // Welcome header with glassmorphic design
                         welcomeHeader
-                        
-                        // Today's progress cards
                         progressSection
-                        
-                        // Quick actions
                         quickActionsSection
-                        
-                        // Recent activity
                         recentActivitySection
                     }
                     .padding(.horizontal, 20)
@@ -34,17 +32,21 @@ struct DashboardView: View {
         }
     }
     
+    // MARK: - Time updates
     private func startTimeUpdates() {
         Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { _ in
             currentTime = Date()
         }
         breathingAnimation = true
     }
+    
+
 }
 
 // MARK: - Dashboard Components
 private extension DashboardView {
     
+    // MARK: Welcome header
     var welcomeHeader: some View {
         VStack(spacing: 16) {
             HStack {
@@ -61,7 +63,6 @@ private extension DashboardView {
                 
                 Spacer()
                 
-                // Animated brain icon (same as login)
                 GIFView(gifName: "studyhub-brain-icon")
                     .frame(width: 40, height: 40)
                     .clipShape(Circle())
@@ -70,7 +71,6 @@ private extension DashboardView {
                     .animation(.easeInOut(duration: 2).repeatForever(), value: breathingAnimation)
             }
             
-            // Time display
             VStack(spacing: 4) {
                 Text(currentTime, style: .time)
                     .font(.headline)
@@ -83,18 +83,18 @@ private extension DashboardView {
             }
         }
         .padding(20)
-        .background {
+        .background(
             RoundedRectangle(cornerRadius: 16)
                 .fill(.white.opacity(0.08))
-                .background {
+                .background(
                     RoundedRectangle(cornerRadius: 16)
                         .fill(.ultraThinMaterial.opacity(0.8))
-                }
-                .overlay {
+                )
+                .overlay(
                     RoundedRectangle(cornerRadius: 16)
                         .stroke(.white.opacity(0.2), lineWidth: 1)
-                }
-        }
+                )
+        )
         .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
     }
     
@@ -108,126 +108,85 @@ private extension DashboardView {
         }
     }
     
+    // MARK: Today's Progress (REAL DATA)
     var progressSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Today's Progress")
-                .font(.headline)
-                .fontWeight(.semibold)
-                .foregroundColor(.white)
-            
-            HStack(spacing: 12) {
-                progressCard("2h 30m", subtitle: "Study Time", icon: "clock.fill", color: .orange, progress: 0.75)
-                progressCard("8/12", subtitle: "Tasks", icon: "checkmark.circle.fill", color: .green, progress: 0.67)
-                progressCard("5", subtitle: "Sessions", icon: "timer", color: .blue, progress: 0.5)
-            }
-        }
-        .padding(20)
-        .background {
-            RoundedRectangle(cornerRadius: 16)
-                .fill(.white.opacity(0.08))
-                .background {
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(.ultraThinMaterial.opacity(0.8))
-                }
-                .overlay {
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(.white.opacity(0.2), lineWidth: 1)
-                }
-        }
-        .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
-    }
-    
-    func progressCard(_ value: String, subtitle: String, icon: String, color: Color, progress: Double) -> some View {
-        VStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.title3)
-                .foregroundColor(color)
-            
-            Text(value)
-                .font(.title3)
-                .fontWeight(.bold)
-                .foregroundColor(.white)
-            
-            Text(subtitle)
-                .font(.caption)
-                .foregroundColor(.white.opacity(0.7))
-            
-            ProgressView(value: progress)
-                .progressViewStyle(LinearProgressViewStyle())
-                .tint(color)
-                .frame(height: 4)
-                .background(.white.opacity(0.2))
-                .cornerRadius(2)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-    }
-    
-    var quickActionsSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Quick Start")
-                .font(.headline)
-                .fontWeight(.semibold)
-                .foregroundColor(.white)
-            
-            LazyVGrid(columns: [
-                GridItem(.flexible()),
-                GridItem(.flexible())
-            ], spacing: 12) {
-                actionButton("Start Focus Session", icon: "timer", gradient: [.orange, .red]) {}
-                actionButton("Add New Task", icon: "plus.circle.fill", gradient: [.green, .mint]) {}
-                actionButton("Join Study Group", icon: "person.2.fill", gradient: [.purple, .pink]) {}
-                actionButton("View Statistics", icon: "chart.bar.fill", gradient: [.blue, .cyan]) {}
-            }
-        }
-        .padding(20)
-        .background {
-            RoundedRectangle(cornerRadius: 16)
-                .fill(.white.opacity(0.08))
-                .background {
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(.ultraThinMaterial.opacity(0.8))
-                }
-                .overlay {
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(.white.opacity(0.2), lineWidth: 1)
-                }
-        }
-        .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
-    }
-    
-    func actionButton(_ title: String, icon: String, gradient: [Color], action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 10) {
-                Image(systemName: icon)
-                    .font(.title3)
+        // Focus time
+        let focusMinutes = Int(timerViewModel.todayFocusTime / 60)
+        let focusHours = focusMinutes / 60
+        let focusRemainderMinutes = focusMinutes % 60
+        let focusLabel: String = focusHours > 0
+            ? "\(focusHours)h \(focusRemainderMinutes)m"
+            : "\(focusMinutes)m"
+        
+        // Tasks
+        let totalTasks = taskViewModel.tasks.count
+        let completedTasks = taskViewModel.tasks.filter { $0.isCompleted }.count
+        let tasksLabel = totalTasks > 0 ? "\(completedTasks)/\(totalTasks)" : "0/0"
+        
+        // Sessions
+        let sessionsLabel = "\(timerViewModel.todaySessions)"
+        
+        return VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("Today's Progress")
+                    .font(.headline)
+                    .fontWeight(.semibold)
                     .foregroundColor(.white)
-                
-                Text(title)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.leading)
                 
                 Spacer()
+                
+                if timerViewModel.isLoadingSessions {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .cyan))
+                        .scaleEffect(0.8)
+                }
             }
-            .padding(16)
-            .background(
-                LinearGradient(
-                    colors: gradient.map { $0.opacity(0.3) },
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
+            
+            HStack(spacing: 12) {
+                StatCard(
+                    title: "Study Time",
+                    value: focusLabel,
+                    icon: "clock.fill",
+                    color: .orange
                 )
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(.white.opacity(0.15), lineWidth: 1)
+                
+                StatCard(
+                    title: "Tasks",
+                    value: tasksLabel,
+                    icon: "checkmark.circle.fill",
+                    color: .green
+                )
+                
+                StatCard(
+                    title: "Sessions",
+                    value: sessionsLabel,
+                    icon: "timer",
+                    color: .blue
+                )
             }
-            .cornerRadius(12)
         }
-        .buttonStyle(PlainButtonStyle())
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.white.opacity(0.08))
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(.ultraThinMaterial.opacity(0.8))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(.white.opacity(0.2), lineWidth: 1)
+                )
+        )
+        .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
     }
     
+    // MARK: Quick Actions (Tab Switching)
+    var quickActionsSection: some View {
+        QuickActionsSection(selectedTab: $selectedTab)
+    }
+    
+    // MARK: Recent Activity (REAL SESSIONS)
     var recentActivitySection: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Recent Activity")
@@ -235,25 +194,38 @@ private extension DashboardView {
                 .fontWeight(.semibold)
                 .foregroundColor(.white)
             
-            VStack(spacing: 12) {
-                activityRow("Completed Mathematics Session", time: "25 min", color: .green, timeAgo: "1h ago")
-                activityRow("Added Physics Assignment", time: "Due Mon", color: .blue, timeAgo: "2h ago")
-                activityRow("Joined Chemistry Group", time: "5 members", color: .purple, timeAgo: "3h ago")
+            if timerViewModel.recentSessions.isEmpty && taskViewModel.tasks.isEmpty {
+                Text("No recent activity yet. Start a focus session or add a task!")
+                    .font(.subheadline)
+                    .foregroundColor(.white.opacity(0.7))
+                    .multilineTextAlignment(.leading)
+                    .padding(.vertical, 8)
+            } else {
+                VStack(spacing: 12) {
+                    ForEach(Array(timerViewModel.recentSessions.prefix(3)), id: \.id) { session in
+                        activityRow(
+                            sessionTitle(for: session),
+                            time: session.displayDuration,
+                            color: session.type.color,
+                            timeAgo: timeAgoString(from: session.startTime)
+                        )
+                    }
+                }
             }
         }
         .padding(20)
-        .background {
+        .background(
             RoundedRectangle(cornerRadius: 16)
                 .fill(.white.opacity(0.08))
-                .background {
+                .background(
                     RoundedRectangle(cornerRadius: 16)
                         .fill(.ultraThinMaterial.opacity(0.8))
-                }
-                .overlay {
+                )
+                .overlay(
                     RoundedRectangle(cornerRadius: 16)
                         .stroke(.white.opacity(0.2), lineWidth: 1)
-                }
-        }
+                )
+        )
         .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
     }
     
@@ -262,10 +234,10 @@ private extension DashboardView {
             Circle()
                 .fill(color.opacity(0.3))
                 .frame(width: 8, height: 8)
-                .overlay {
+                .overlay(
                     Circle()
                         .stroke(color, lineWidth: 2)
-                }
+                )
             
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
@@ -287,9 +259,41 @@ private extension DashboardView {
         .padding(.vertical, 6)
     }
     
+    // MARK: Helpers for Recent Activity
+    private func sessionTitle(for session: StudySession) -> String {
+        if let taskTitle = session.taskTitle, !taskTitle.isEmpty {
+            return session.completedSuccessfully
+                ? "Completed focus session for \(taskTitle)"
+                : "Skipped focus session for \(taskTitle)"
+        } else {
+            switch session.type {
+            case .focus:
+                return session.completedSuccessfully ? "Completed focus session" : "Skipped focus session"
+            case .shortBreak:
+                return "Short break"
+            case .longBreak:
+                return "Long break"
+            }
+        }
+    }
+    
+    private func timeAgoString(from date: Date) -> String {
+        let formatter = DateComponentsFormatter()
+        formatter.unitsStyle = .abbreviated
+        formatter.allowedUnits = [.minute, .hour, .day]
+        formatter.maximumUnitCount = 1
+        
+        let now = Date()
+        if let diff = formatter.string(from: date, to: now) {
+            return "\(diff) ago"
+        } else {
+            return "Just now"
+        }
+    }
+    
+    // MARK: Shared UI
     var enhancedBackground: some View {
         ZStack {
-            // Same gradient as login
             LinearGradient(
                 colors: [
                     Color.blue.opacity(0.4),
@@ -302,7 +306,6 @@ private extension DashboardView {
             )
             .ignoresSafeArea()
             
-            // Same floating shapes as login
             subtleShapes
         }
     }
@@ -330,6 +333,116 @@ private extension DashboardView {
     }
 }
 
+// MARK: - Quick Actions Section
+struct QuickActionsSection: View {
+    @Binding var selectedTab: AppTab
+    
+    private let columns = [
+        GridItem(.flexible()),
+        GridItem(.flexible())
+    ]
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Quick Start")
+                .font(.headline)
+                .fontWeight(.semibold)
+                .foregroundColor(.white)
+            
+            LazyVGrid(columns: columns, spacing: 12) {
+                QuickActionButton(
+                    title: "Start Focus Session",
+                    icon: "timer",
+                    gradient: [.orange, .red]
+                ) {
+                    selectedTab = .timer   // go to Focus tab
+                }
+                
+                QuickActionButton(
+                    title: "Add New Task",
+                    icon: "plus.circle.fill",
+                    gradient: [.green, .mint]
+                ) {
+                    selectedTab = .tasks   // go to Tasks tab
+                }
+                
+                QuickActionButton(
+                    title: "Join Study Group",
+                    icon: "person.2.fill",
+                    gradient: [.purple, .pink]
+                ) {
+                    selectedTab = .groups  // go to Groups tab
+                }
+                
+                QuickActionButton(
+                    title: "View Statistics",
+                    icon: "chart.bar.fill",
+                    gradient: [.blue, .cyan]
+                ) {
+                    selectedTab = .timer   // or another tab if you make a stats screen
+                }
+            }
+        }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.white.opacity(0.08))
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(.ultraThinMaterial.opacity(0.8))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(.white.opacity(0.2), lineWidth: 1)
+                )
+        )
+        .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+    }
+ 
+
+}
+
+// MARK: - Quick Action Button
+struct QuickActionButton: View {
+    let title: String
+    let icon: String
+    let gradient: [Color]
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.title3)
+                    .foregroundColor(.white)
+                
+                Text(title)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.leading)
+                
+                Spacer()
+            }
+            .padding(16)
+            .background(
+                LinearGradient(
+                    colors: gradient.map { $0.opacity(0.3) },
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(.white.opacity(0.15), lineWidth: 1)
+            )
+            .cornerRadius(12)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
 #Preview {
-    DashboardView()
+    // Use a constant binding just for preview
+    DashboardView(selectedTab: .constant(.dashboard))
 }

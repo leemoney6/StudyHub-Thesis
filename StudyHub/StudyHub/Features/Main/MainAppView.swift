@@ -1,30 +1,31 @@
 import SwiftUI
 
+enum AppTab: String, CaseIterable {
+    case dashboard = "Dashboard"
+    case tasks = "Tasks"
+    case timer = "Focus"
+    case groups = "Groups"
+    case profile = "Profile"
+    
+    var icon: String {
+        switch self {
+        case .dashboard: return "house.fill"
+        case .tasks: return "list.bullet.clipboard.fill"
+        case .timer: return "timer"
+        case .groups: return "person.2.fill"
+        case .profile: return "person.circle.fill"
+        }
+    }
+}
+
 struct MainAppView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
     @State private var selectedTab: AppTab = .dashboard
     
-    enum AppTab: String, CaseIterable {
-        case dashboard = "Dashboard"
-        case tasks = "Tasks"
-        case timer = "Focus"
-        case groups = "Groups"
-        case profile = "Profile"
-        
-        var icon: String {
-            switch self {
-            case .dashboard: return "house.fill"
-            case .tasks: return "list.bullet.clipboard.fill"
-            case .timer: return "timer"
-            case .groups: return "person.2.fill"
-            case .profile: return "person.circle.fill"
-            }
-        }
-    }
     
     var body: some View {
         TabView(selection: $selectedTab) {
-            DashboardView()
+            DashboardView(selectedTab: .constant(.dashboard))
                 .tabItem {
                     Image(systemName: AppTab.dashboard.icon)
                     Text(AppTab.dashboard.rawValue)

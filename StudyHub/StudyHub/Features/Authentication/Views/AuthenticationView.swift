@@ -24,6 +24,7 @@ struct GIFView: UIViewRepresentable {
 
 
 struct AuthenticationView: View {
+    @State private var showingForgotPassword = false
     @EnvironmentObject var viewModel: AuthViewModel
     @State private var isSignUpMode = false
     @State private var showingImagePicker = false
@@ -175,7 +176,29 @@ private extension AuthenticationView {
                 .textInputAutocapitalization(.never)
             
             CustomSecureTextField(placeholder: "Password", text: $viewModel.password)
+            HStack {
+                Spacer()
+                Button("Forgot Password?") {
+                    showingForgotPassword = true
+                }
+                .font(.caption)
+                .foregroundColor(.cyan)
+                .fontWeight(.medium)
+            }.sheet(isPresented: $showingForgotPassword) {
+                ForgotPasswordView()
+                    .environmentObject(viewModel)
+            }.alert("Password Reset", isPresented: $viewModel.showResetAlert) {
+                Button("OK") {
+                    viewModel.showResetAlert = false
+                    if viewModel.resetEmailSent {
+                        showingForgotPassword = false
+                    }
+                }
+            } message: {
+                Text(viewModel.resetMessage)
+            }
         }
+        
     }
     
     var signUpForm: some View {
